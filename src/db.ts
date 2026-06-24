@@ -70,10 +70,10 @@ export async function upsertSnapshot(db: D1Database, snap: Snapshot, tsx: number
     snap.netliq_dir,
     snap.verdict,
     snap.score,
-    snap.p0,
-    snap.p1,
-    snap.p2,
-    snap.p3,
+    snap.p0 ? 1 : 0,
+    snap.p1 ? 1 : 0,
+    snap.p2 ? 1 : 0,
+    snap.p3 ? 1 : 0,
     tsx,                           // tsx from function parameter (live price, not on Snapshot)
     snap.reason,
     JSON.stringify(snap.factors),  // factors_json

@@ -129,4 +129,12 @@ describe('computeSnapshot — full Snapshot interface', () => {
     }
     expect(snap.score).toBeCloseTo(expected, 5);
   });
+
+  it('p0..p3 are boolean pillar flags', () => {
+    snap = computeSnapshot(buildFullMap(), DATE);
+    expect(typeof snap.p0).toBe('boolean');
+    expect(typeof snap.p1).toBe('boolean');
+    expect(typeof snap.p2).toBe('boolean');
+    expect(typeof snap.p3).toBe('boolean');
+  });
 });

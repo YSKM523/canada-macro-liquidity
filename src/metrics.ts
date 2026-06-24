@@ -228,8 +228,8 @@ export interface Snapshot {
   score:          number;
   factors:        Record<typeof FACTOR_KEYS[number], number>;
   coverage:       number;        // 0–1; fraction of COVERAGE_FACTORS with real data ≤ date
-  // Guidance paragraphs
-  p0: string; p1: string; p2: string; p3: string;
+  // Pillar flags (boolean; stored as INTEGER 0/1 in daily_snapshot)
+  p0: boolean; p1: boolean; p2: boolean; p3: boolean;
   reason: string;
 }
 
@@ -355,19 +355,22 @@ export function computeSnapshot(m: SeriesMap, date: string, prev?: Verdict): Sna
   const netliq_trend  = netliqTrendScore;
   const netliq_dir    = settlementDirection(netliqTrendScore);
 
-  // ── guidance paragraphs (p0–p3) + reason ────────────────────────────────────
+  // ── guidance text (reason) ────────────────────────────────────────────────
   const reason = buildReason(qe_qt_regime, netliq_dir, verdict);
-  const guidance = buildGuidance({
+  // guidance is computed at API response time (see /api/snapshot); not stored in DB
+  buildGuidance({
     score,
     verdict,
     netliqDir:   netliq_dir,
     qeQtRegime:  qe_qt_regime,
     stressed:    false,   // live stress is runtime-only; not computed here
   });
-  const p0 = guidance.tierLabel;
-  const p1 = guidance.exposure;
-  const p2 = guidance.lean;
-  const p3 = guidance.divergence ?? '';
+
+  // ── boolean pillar flags (stored as INTEGER 0/1 in daily_snapshot) ────────
+  const p0 = factors.rates >= 50 && factors.funding >= 50 && factors.credit >= 50;
+  const p1 = factors.netliqTrend >= 50 || factors.impulse >= 50;
+  const p2 = factors.dollar >= 50;
+  const p3 = factors.oil >= 50; // CA commodity/CAD pillar (US used vol; CA has no vol factor)
 
   return {
     date,
