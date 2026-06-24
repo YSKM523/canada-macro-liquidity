@@ -1,0 +1,181 @@
+{
+  "run_at": "2026-06-24T18:39:36.358Z",
+  "source": "REAL src/ modules — no reimplementation",
+  "window": {
+    "from": "2017-01-04",
+    "to": "2026-06-17",
+    "n_snapshots": 494,
+    "years": 9.44832306639288
+  },
+  "n_rows_with_tsx": 494,
+  "backtest": {
+    "window": {
+      "from": "2017-01-04",
+      "to": "2026-06-17",
+      "n_snapshots": 494,
+      "years": 9.44832306639288
+    },
+    "horizons": {
+      "4w": {
+        "n": 490,
+        "ic_spearman": -0.01803434654633535,
+        "ic_pearson": 0.07662938132996291,
+        "hit_rate": 0.4897959183673469
+      },
+      "8w": {
+        "n": 486,
+        "ic_spearman": -0.028016346610446118,
+        "ic_pearson": 0.08295688013684407,
+        "hit_rate": 0.4773662551440329
+      },
+      "13w": {
+        "n": 481,
+        "ic_spearman": -0.017133543533958472,
+        "ic_pearson": 0.09175849241867733,
+        "hit_rate": 0.46361746361746364
+      }
+    },
+    "factor_ic_spearman": {
+      "netliqTrend": {
+        "4w": -0.011262394444621002,
+        "8w": -0.018388743686805684,
+        "13w": 0.04389126139677599
+      },
+      "reserveAdequacy": {
+        "4w": 0.04514393753186871,
+        "8w": 0.06730818497201667,
+        "13w": 0.08392610916391473
+      },
+      "impulse": {
+        "4w": -0.0374345864714252,
+        "8w": -0.06023679988620111,
+        "13w": -0.06410350156415572
+      },
+      "curve": {
+        "4w": 0.10000939430066365,
+        "8w": 0.1308770183829982,
+        "13w": 0.15599762304252485
+      },
+      "dollar": {
+        "4w": -0.13783211235201784,
+        "8w": -0.19531316971257712,
+        "13w": -0.21383161736840325
+      },
+      "oil": {
+        "4w": -0.21800764057703614,
+        "8w": -0.3372710715435848,
+        "13w": -0.4456615356076674
+      },
+      "funding": {
+        "4w": -0.08610670593152316,
+        "8w": -0.15253461605642188,
+        "13w": -0.2070430277939157
+      },
+      "rates": {
+        "4w": 0.09208496847147532,
+        "8w": 0.1283560941493214,
+        "13w": 0.11634388790009431
+      },
+      "credit": {
+        "4w": 0.04647488361696014,
+        "8w": 0.03832918363310343,
+        "13w": 0.09463490935887316
+      }
+    },
+    "strategy_long_flat": {
+      "ann_return": 0.06691785814340956,
+      "buyhold_ann": 0.09031822241073906,
+      "sharpe": 0.8633554175788015,
+      "n_periods": 493
+    },
+    "caveats": [
+      "history 2016+ — directional evidence not proof",
+      "overlapping forward windows overstate significance — n reported",
+      "uneven snapshot spacing — strategy Sharpe approximate"
+    ]
+  },
+  "robustness": {
+    "window": {
+      "from": "2017-01-04",
+      "to": "2026-06-17",
+      "n_snapshots": 494,
+      "years": 9.44832306639288
+    },
+    "horizon_weeks": 13,
+    "ic": {
+      "overlapping": {
+        "n": 481,
+        "ic_spearman": -0.017133543533958472
+      },
+      "non_overlapping": {
+        "n": 37,
+        "ic_spearman": -0.02252252252252252
+      },
+      "bootstrap": {
+        "point": -0.017133543533958472,
+        "ci_lo": -0.2679416254691273,
+        "ci_hi": 0.24173759360810387,
+        "p_value": 0.5585,
+        "iters": 2000
+      }
+    },
+    "strategy": {
+      "ann_return": 0.06691785814340956,
+      "buyhold_ann": 0.09031822241073906,
+      "n_periods": 493,
+      "sharpe": {
+        "point": 0.8633554175788015,
+        "ci_lo": 0.37914728709373363,
+        "ci_hi": 1.2840475402274862,
+        "p_value": 0,
+        "iters": 2000
+      },
+      "max_drawdown": 0.07167363851250749,
+      "turnover_per_period": 0.06707317073170732,
+      "turnover_annual": 3.4997822299651573
+    },
+    "regimes": {
+      "balance_sheet": {
+        "FLAT": {
+          "n": 79,
+          "ic_spearman": -0.21567672833495619
+        },
+        "CONTRACTING": {
+          "n": 212,
+          "ic_spearman": -0.0561428123421743
+        },
+        "EXPANDING": {
+          "n": 190,
+          "ic_spearman": 0.0399979005104384
+        }
+      },
+      "covid": {
+        "pre": {
+          "n": 165,
+          "ic_spearman": -0.27745839232762537
+        },
+        "post": {
+          "n": 316,
+          "ic_spearman": 0.12513372237846143
+        }
+      },
+      "qt": {
+        "pre": {
+          "n": 426,
+          "ic_spearman": 0.09052959997205993
+        },
+        "post": {
+          "n": 55,
+          "ic_spearman": -0.3024531024531025
+        }
+      },
+      "vix": {}
+    },
+    "caveats": [
+      "block bootstrap (seed-fixed) — CI/p quantify overlap autocorrelation; non-overlapping n is the honest independent count",
+      "regime splits are descriptive (in-sample) — small-n buckets (esp. post-QT) are noisy",
+      "long-flat (score>55) is a coarse proxy; turnover ignores trading costs",
+      "vix regime axis is empty for CA (no VIX series stored) — all rows excluded from that breakdown"
+    ]
+  }
+}

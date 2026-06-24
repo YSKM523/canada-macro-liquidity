@@ -13,9 +13,10 @@
     "export:snapshots": "wrangler d1 execute ca_liquidity --remote --json --command \"SELECT date, factors_json, spx, qe_qt_regime, vix_eod FROM daily_snapshot WHERE spx IS NOT NULL ORDER BY date\" > scripts/data/snapshots.json"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0",
-    "wrangler": "^3.80.0",
-    "@cloudflare/workers-types": "^4.20240909.0"
+    "wrangler": "^3.80.0"
   }
 }
