@@ -31,8 +31,12 @@ export const scoreReserveAdequacy = (sb: Obs[], d: string) => zScore(sb, d, 1);
 export function scoreNetliqTrend(sb: Obs[], d: string, weeks = 13): number {
   const v = sb.filter(o => o.date <= d).map(o => o.value);
   if (v.length <= weeks) return 50;
-  const chg = v.map((x, i) => i >= weeks ? x - v[i - weeks] : NaN).filter(Number.isFinite);
-  return zScore(chg.map((x, i) => ({ date: String(i), value: x })), String(chg.length - 1), 1);
+  const chg: number[] = [];
+  for (let i = weeks; i < v.length; i++) chg.push(v[i] - v[i - weeks]);
+  if (chg.length === 0) return 50;
+  const { m, sd } = stats(chg);
+  const z = (chg[chg.length - 1] - m) / sd;
+  return Math.max(0, Math.min(100, 50 + z * 20));
 }
 
 export function scoreCurve(goc10: Obs[], goc2: Obs[], d: string): number {
