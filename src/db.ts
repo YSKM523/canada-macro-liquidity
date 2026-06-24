@@ -121,3 +121,11 @@ export async function getAllMeta(db: D1Database): Promise<Record<string, string>
   for (const r of rs.results ?? []) m[r.key] = r.value;
   return m;
 }
+
+/** Return the most recent observation value for a single series, or null if no rows exist. */
+export async function latestObs(db: D1Database, seriesId: string): Promise<number | null> {
+  const row = await db.prepare(
+    'SELECT value FROM observation WHERE series_id = ? ORDER BY date DESC LIMIT 1'
+  ).bind(seriesId).first<{ value: number }>();
+  return row?.value ?? null;
+}

@@ -73,6 +73,8 @@ async function main() {
   renderScore(snapRes.snapshot);
   renderFactorTable(snapRes);
   renderChart((histRes && histRes.rows) || []);
+  renderFx(snapRes);
+  renderSignals(snapRes);
   renderIngest(snapRes.ingest);
   renderProvenance(snapRes);
   setupAccordions();
@@ -454,6 +456,63 @@ function renderSettlementBal(nl, win) {
     note = `<p class="ex-note">较${EX_WINDOW_LABEL[win] || '基准'} 结算余额 ${tag(d.netliq ?? d.settlement_bal ?? 0)}M CAD</p>`;
   }
   return `<div class="ex-sub">结算余额（百万 CAD，BoC B2_WEEKLY）</div>${bridge}${note}`;
+}
+
+// ── 汇率面板 ──────────────────────────────────────────────────────────────
+function renderFx(res) {
+  const card = document.getElementById('fx-card');
+  const body = document.getElementById('fx-body');
+  if (!card || !body) return;
+  const s = res.snapshot || {};
+  const signals = res.signals || {};
+  const live = res.live || {};
+
+  // USD/CAD: prefer live (real-time), fall back to snapshot stored value
+  const usdcad = live.usdcad != null ? live.usdcad : (s.usdcad != null ? s.usdcad : null);
+  const cadusd = usdcad != null ? 1 / usdcad : null;
+  const cadcny = signals.cadcny != null ? signals.cadcny : null;
+
+  const row = (label, value, dp) =>
+    `<div class="fx-row"><span class="fx-label">${label}</span><span class="fx-val">${value != null ? Number(value).toFixed(dp) : '—'}</span></div>`;
+
+  body.innerHTML =
+    row('USD/CAD', usdcad, 4) +
+    row('CAD/USD', cadusd, 4) +
+    row('CAD/CNY', cadcny, 4);
+  card.style.display = '';
+}
+
+// ── 额外信号面板 ──────────────────────────────────────────────────────────
+function renderSignals(res) {
+  const card = document.getElementById('signals-card');
+  const body = document.getElementById('signals-body');
+  if (!card || !body) return;
+  const s = res.snapshot || {};
+  const signals = res.signals || {};
+  const live = res.live || {};
+
+  // CORRA vs 政策目标利差 (bps)：snapshot already stores corra_target spread (in pct units)
+  const corraDiffBps = s.corra_target != null ? (s.corra_target * 100).toFixed(1) + ' bps' : '—';
+
+  // 美加利差：US fed funds rate − CA target rate (bps)
+  const us_rate = signals.us_rate;
+  const target = signals.target;
+  const usca_diff = (us_rate != null && target != null)
+    ? ((us_rate - target) * 100).toFixed(1) + ' bps'
+    : '—';
+
+  // WTI：prefer live (real-time fetch), fall back to snapshot stored value
+  const wti = live.wti != null ? live.wti : (s.wti != null ? s.wti : null);
+  const wtiStr = wti != null ? '$' + Number(wti).toFixed(2) : '—';
+
+  const row = (label, value) =>
+    `<div class="sig-row"><span class="sig-label">${label}</span><span class="sig-val">${value}</span></div>`;
+
+  body.innerHTML =
+    row('CORRA − 政策目标利差', corraDiffBps) +
+    row('美加利差 (US − CA 政策利率)', usca_diff) +
+    row('WTI 原油', wtiStr);
+  card.style.display = '';
 }
 
 // ── 回测稳健性面板 ────────────────────────────────────────────────────────

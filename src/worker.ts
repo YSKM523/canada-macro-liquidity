@@ -1,9 +1,9 @@
 import type { Env } from './service';
 import { runIngest } from './service';
-import { latestSnapshot, getAllMeta, countSnapshots } from './db';
+import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs } from './db';
 import { fetchLivePrices, fetchStressSeries, evaluateLiveStress } from './prices';
 import { policyRegime, downgradeVerdict, buildGuidance } from './metrics';
-import { COVERAGE_FACTORS, INGEST_STALE_HOURS, STRESS_SCORE_CEILING } from './config';
+import { COVERAGE_FACTORS, INGEST_STALE_HOURS, STRESS_SCORE_CEILING, SERIES } from './config';
 import { assessHealth } from './health';
 
 const json = (data: unknown, status = 200) =>
@@ -38,12 +38,22 @@ export default {
         }
       }
 
+      if (p === '/api/history') {
+        const to = url.searchParams.get('to') ?? '2100-01-01';
+        const from = url.searchParams.get('from') ?? '1900-01-01';
+        return json({ rows: await snapshotHistory(env.DB, from, to) });
+      }
+
       if (p === '/api/snapshot') {
-        const [row, live, stress, meta] = await Promise.all([
+        const [row, live, stress, meta, cadcny, us_rate, corra, target] = await Promise.all([
           latestSnapshot(env.DB),
           fetchLivePrices(new Date().toISOString()),
           fetchStressSeries().then(s => evaluateLiveStress(s)),
           getAllMeta(env.DB),
+          latestObs(env.DB, SERIES.CADCNY.id),
+          latestObs(env.DB, SERIES.US_RATE.id),
+          latestObs(env.DB, SERIES.CORRA.id),
+          latestObs(env.DB, SERIES.TARGET.id),
         ]);
         const ingest = {
           ingest_at: meta.last_ingest_at ?? null,
@@ -53,7 +63,8 @@ export default {
             : null,
           ingest_status: meta.last_status ?? null,
         };
-        if (!row) return json({ snapshot: null, live, ingest, error: 'no_data' });
+        const signals = { cadcny, us_rate, corra, target };
+        if (!row) return json({ snapshot: null, live, ingest, signals, error: 'no_data' });
         const r: any = row;
         const display_verdict = (stress.stressed && r.score < STRESS_SCORE_CEILING)
           ? downgradeVerdict(r.verdict)
@@ -73,7 +84,7 @@ export default {
           guidance,
           coverage_total: COVERAGE_FACTORS.length,
         };
-        return json({ snapshot: snap, live, ingest });
+        return json({ snapshot: snap, live, ingest, signals });
       }
 
       if (p === '/api/admin/refresh' && req.method === 'POST') {
