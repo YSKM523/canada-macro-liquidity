@@ -1,4 +1,4 @@
-import { VERDICT_BANDS, CA_QT_END_DATE } from './config';
+import { VERDICT_BANDS, CA_QT_END_DATE, SERIES, WEIGHTS, FACTOR_KEYS, COVERAGE_FACTORS, NETLIQ_TREND_WEEKS } from './config';
 
 export interface Obs { date: string; value: number }
 
@@ -194,4 +194,203 @@ export function policyRegime(impulse: Impulse, date: string): PolicyRegime {
   if (impulse === 'EXPANDING') return 'QE';
   if (impulse === 'CONTRACTING') return 'QT';
   return 'NEUTRAL';
+}
+
+// ── SeriesMap + Snapshot + computeSnapshot ────────────────────────────────────
+
+/** Keyed by config series id strings (e.g. 'V36636', 'BAMLH0A0HYM2', 'WTI') */
+export type SeriesMap = Record<string, Obs[]>;
+
+export interface Snapshot {
+  // Date
+  date: string;
+  // Raw BoC balance-sheet reads (null if missing)
+  total_assets:   number | null;
+  goc_deposits:   number | null;
+  reverse_repo:   number | null;
+  notes_circ:     number | null;
+  settlement_bal: number | null;
+  // Net liquidity (= settlement balances, not a derived formula)
+  netliq:         number | null;
+  netliq_trend:   number;        // scorer value 0–100
+  // Market reads
+  corra_target:   number | null; // CORRA – target spread (bps context, raw diff)
+  goc10:          number | null;
+  goc2:           number | null;
+  usdcad:         number | null;
+  wti:            number | null;
+  hy_oas:         number | null;
+  // Regime / direction
+  qe_qt_regime:   Impulse;       // EXPANDING / CONTRACTING / FLAT
+  netliq_dir:     Direction;     // UP / DOWN / FLAT
+  // Verdict + scoring
+  verdict:        Verdict;
+  score:          number;
+  factors:        Record<typeof FACTOR_KEYS[number], number>;
+  coverage:       number;        // 0–1; fraction of COVERAGE_FACTORS with real data ≤ date
+  // Guidance paragraphs
+  p0: string; p1: string; p2: string; p3: string;
+  reason: string;
+}
+
+/** Epsilon for total-assets 4-week change to call EXPANDING vs CONTRACTING (in M CAD) */
+const ASSETS_EPSILON = 500; // $500M, conservative
+
+/** Safe series lookup — returns [] if series not present */
+function series(m: SeriesMap, id: string): Obs[] {
+  return m[id] ?? [];
+}
+
+/** True if series has ≥1 observation with date ≤ d */
+function hasCoverage(obs: Obs[], d: string): boolean {
+  return obs.some(o => o.date <= d);
+}
+
+/** Total-assets 4wk direction */
+function assetsDirection(obs: Obs[], date: string, epsilonWeeks = 4): Impulse {
+  const filtered = obs.filter(o => o.date <= date);
+  if (filtered.length < epsilonWeeks + 1) return 'FLAT';
+  const latest = filtered[filtered.length - 1].value;
+  const prev   = filtered[filtered.length - 1 - epsilonWeeks].value;
+  const delta  = latest - prev;
+  if (delta > ASSETS_EPSILON)  return 'EXPANDING';
+  if (delta < -ASSETS_EPSILON) return 'CONTRACTING';
+  return 'FLAT';
+}
+
+/** Netliq 13wk direction (UP / DOWN / FLAT) from the trend scorer */
+function settlementDirection(score: number): Direction {
+  if (score > 52) return 'UP';
+  if (score < 48) return 'DOWN';
+  return 'FLAT';
+}
+
+export function computeSnapshot(m: SeriesMap, date: string, prev?: Verdict): Snapshot {
+  // ── raw reads ────────────────────────────────────────────────────────────────
+  const sbSeries      = series(m, SERIES.SETTLEMENT.id);
+  const assetsSeries  = series(m, SERIES.TOTAL_ASSETS.id);
+  const gocDepSeries  = series(m, SERIES.GOC_DEPOSITS.id);
+  const rrSeries      = series(m, SERIES.REVERSE_REPO.id);
+  const notesSeries   = series(m, SERIES.NOTES_CIRC.id);
+  const corraSeries   = series(m, SERIES.CORRA.id);
+  const targetSeries  = series(m, SERIES.TARGET.id);
+  const goc10Series   = series(m, SERIES.GOC10.id);
+  const goc2Series    = series(m, SERIES.GOC2.id);
+  const usdcadSeries  = series(m, SERIES.USDCAD.id);
+  const wtiSeries     = series(m, 'WTI');
+  const hyOasSeries   = series(m, SERIES.HY_OAS.id);
+
+  // Point-in-time reads
+  const total_assets   = asOf(assetsSeries, date);
+  const goc_deposits   = asOf(gocDepSeries, date);
+  const reverse_repo   = asOf(rrSeries, date);
+  const notes_circ     = asOf(notesSeries, date);
+  const settlement_bal = asOf(sbSeries, date);
+  const netliq         = settlement_bal;    // CA: netliq IS settlement balances
+
+  const corraVal  = asOf(corraSeries, date);
+  const targetVal = asOf(targetSeries, date);
+  const corra_target = (corraVal != null && targetVal != null) ? corraVal - targetVal : null;
+
+  const goc10  = asOf(goc10Series, date);
+  const goc2   = asOf(goc2Series, date);
+  const usdcad = asOf(usdcadSeries, date);
+  const wti    = asOf(wtiSeries, date);
+  const hy_oas = asOf(hyOasSeries, date);
+
+  // ── 9 factor scores ──────────────────────────────────────────────────────────
+  const netliqTrendScore    = scoreNetliqTrend(sbSeries, date, NETLIQ_TREND_WEEKS);
+  const reserveAdequacyScore = scoreReserveAdequacy(sbSeries, date);
+  const impulseScore        = scoreImpulse(assetsSeries, date);
+  const curveScore          = scoreCurve(goc10Series, goc2Series, date);
+  const dollarScore         = scoreDollar(usdcadSeries, date);
+  const oilScore            = scoreOil(wtiSeries, date);
+  const fundingScore        = scoreFunding(corraSeries, targetSeries, date);
+  const ratesScore          = scoreRates(goc10Series, date);
+  const creditScore         = scoreCredit(hyOasSeries, date);
+
+  const factors: Record<typeof FACTOR_KEYS[number], number> = {
+    netliqTrend:      netliqTrendScore,
+    reserveAdequacy:  reserveAdequacyScore,
+    impulse:          impulseScore,
+    curve:            curveScore,
+    dollar:           dollarScore,
+    oil:              oilScore,
+    funding:          fundingScore,
+    rates:            ratesScore,
+    credit:           creditScore,
+  };
+
+  // ── coverage (honest: missing series score 50 but decrement coverage) ────────
+  // Map each factor key to the series it relies on
+  const factorSeriesMap: Record<typeof FACTOR_KEYS[number], Obs[][]> = {
+    netliqTrend:     [sbSeries],
+    reserveAdequacy: [sbSeries],
+    impulse:         [assetsSeries],
+    curve:           [goc10Series, goc2Series],
+    dollar:          [usdcadSeries],
+    oil:             [wtiSeries],
+    funding:         [corraSeries, targetSeries],
+    rates:           [goc10Series],
+    credit:          [hyOasSeries],
+  };
+
+  let covered = 0;
+  for (const key of COVERAGE_FACTORS) {
+    const seriesArr = factorSeriesMap[key];
+    // A factor is "covered" if ALL its required series have ≥1 obs ≤ date
+    if (seriesArr.every(s => hasCoverage(s, date))) covered++;
+  }
+  const coverage = covered / COVERAGE_FACTORS.length;
+
+  // ── score = Σ factor * weight ─────────────────────────────────────────────────
+  let score = 0;
+  for (const k of FACTOR_KEYS) {
+    score += factors[k] * WEIGHTS[k];
+  }
+
+  // ── verdict + regime + direction ──────────────────────────────────────────────
+  const verdict       = verdictFromScore(score, prev);
+  const qe_qt_regime  = assetsDirection(assetsSeries, date);
+  const netliq_trend  = netliqTrendScore;
+  const netliq_dir    = settlementDirection(netliqTrendScore);
+
+  // ── guidance paragraphs (p0–p3) + reason ────────────────────────────────────
+  const reason = buildReason(qe_qt_regime, netliq_dir, verdict);
+  const guidance = buildGuidance({
+    score,
+    verdict,
+    netliqDir:   netliq_dir,
+    qeQtRegime:  qe_qt_regime,
+    stressed:    false,   // live stress is runtime-only; not computed here
+  });
+  const p0 = guidance.tierLabel;
+  const p1 = guidance.exposure;
+  const p2 = guidance.lean;
+  const p3 = guidance.divergence ?? '';
+
+  return {
+    date,
+    total_assets,
+    goc_deposits,
+    reverse_repo,
+    notes_circ,
+    settlement_bal,
+    netliq,
+    netliq_trend,
+    corra_target,
+    goc10,
+    goc2,
+    usdcad,
+    wti,
+    hy_oas,
+    qe_qt_regime,
+    netliq_dir,
+    verdict,
+    score,
+    factors,
+    coverage,
+    p0, p1, p2, p3,
+    reason,
+  };
 }
