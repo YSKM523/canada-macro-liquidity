@@ -1,3 +1,5 @@
+import { VERDICT_BANDS, CA_QT_END_DATE } from './config';
+
 export interface Obs { date: string; value: number }
 
 export function asOf(series: Obs[], date: string): number | null {
@@ -54,8 +56,6 @@ export function scoreFunding(corra: Obs[], target: Obs[], d: string): number {
 }
 
 // ── Verdict + guidance + regime (ported from US metrics, CA copy) ─────────────
-
-import { VERDICT_BANDS } from './config';
 
 export type Verdict = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 
@@ -190,8 +190,7 @@ export type PolicyRegime = 'QE' | 'QT' | 'RESERVE_MGMT' | 'NEUTRAL';
 
 export function policyRegime(impulse: Impulse, date: string): PolicyRegime {
   // Post-QT era: balance-sheet changes are settlement-balance management, not QE/QT
-  const QT_END_DATE = '2025-03-15';
-  if (date >= QT_END_DATE) return 'RESERVE_MGMT';
+  if (date >= CA_QT_END_DATE) return 'RESERVE_MGMT';
   if (impulse === 'EXPANDING') return 'QE';
   if (impulse === 'CONTRACTING') return 'QT';
   return 'NEUTRAL';

@@ -10,6 +10,7 @@ describe('verdict + guidance', () => {
   it('downgrade steps one notch', () => {
     expect(downgradeVerdict('BULLISH')).toBe('NEUTRAL');
     expect(downgradeVerdict('NEUTRAL')).toBe('BEARISH');
+    expect(downgradeVerdict('BEARISH')).toBe('BEARISH');
   });
   it('stress forces brake tone', () => {
     expect(buildGuidance({ score: 60, verdict: 'BULLISH', netliqDir: 'UP', qeQtRegime: 'EXPANDING', stressed: true }).tone).toBe('brake');

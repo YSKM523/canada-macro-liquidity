@@ -25,6 +25,10 @@ export const WEIGHTS = {
 } as const;
 
 export const COVERAGE_FACTORS = FACTOR_KEYS;
+
+// Bank of Canada concluded QT and restarted term repo operations effective 2025-03-05,
+// ending balance-sheet runoff (announced 2025-01-29). Source: bankofcanada.ca/2025/01 QT-end releases.
+export const CA_QT_END_DATE = '2025-03-05';
 export const VERDICT_BANDS = { bull: 55, bear: 45 } as const;
 export const STRESS = { vix: 25, tsxDd: -0.04, usdcad: 0.02, wti: -0.08 } as const; // 5-day thresholds
 export const STRESS_SCORE_CEILING = 55;
