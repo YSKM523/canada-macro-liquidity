@@ -35,7 +35,7 @@ function buildFullMap(): any {
     [SERIES.GOC2.id]:         mk([['2026-06-10', 3.10], ['2026-06-17', 3.12]]),
     [SERIES.USDCAD.id]:       mk([['2026-06-10', 1.36], ['2026-06-17', 1.37]]),
     [SERIES.HY_OAS.id]:       mk([['2026-06-10', 3.50], ['2026-06-17', 3.45]]),
-    'WTI':                    mk([['2026-06-10', 72.00], ['2026-06-17', 73.00]]),
+    [SERIES.WTI.id]:          mk([['2026-06-10', 72.00], ['2026-06-17', 73.00]]),
   };
 }
 
@@ -48,8 +48,7 @@ describe('computeSnapshot — brief-specified tests', () => {
 
   it('coverage reflects fraction of factors with real data', () => {
     const s = computeSnapshot(minimalMap, '2026-06-17');
-    expect(s.coverage).toBeGreaterThan(0);
-    expect(s.coverage).toBeLessThanOrEqual(1);
+    expect(s.coverage).toBeCloseTo(3/9, 5);
   });
 });
 

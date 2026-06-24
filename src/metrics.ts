@@ -277,7 +277,7 @@ export function computeSnapshot(m: SeriesMap, date: string, prev?: Verdict): Sna
   const goc10Series   = series(m, SERIES.GOC10.id);
   const goc2Series    = series(m, SERIES.GOC2.id);
   const usdcadSeries  = series(m, SERIES.USDCAD.id);
-  const wtiSeries     = series(m, 'WTI');
+  const wtiSeries     = series(m, SERIES.WTI.id);
   const hyOasSeries   = series(m, SERIES.HY_OAS.id);
 
   // Point-in-time reads

@@ -12,6 +12,8 @@ export const SERIES = {
   CADCNY:       { id: 'FXCADCNY', source: 'boc', unit: 'fx' },
   US_RATE:      { id: 'DFEDTARU', source: 'fred', unit: 'pct' },
   HY_OAS:       { id: 'BAMLH0A0HYM2', source: 'fred', unit: 'pct' },
+  WTI:          { id: 'WTI', source: 'yahoo', unit: 'usd' },
+  TSX:          { id: '^GSPTSE', source: 'yahoo', unit: 'idx' },
 } as const;
 
 export const SERIES_IDS_BOC = Object.values(SERIES).filter(s => s.source === 'boc').map(s => s.id);
