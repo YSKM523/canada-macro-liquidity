@@ -358,13 +358,6 @@ export function computeSnapshot(m: SeriesMap, date: string, prev?: Verdict): Sna
   // ── guidance text (reason) ────────────────────────────────────────────────
   const reason = buildReason(qe_qt_regime, netliq_dir, verdict);
   // guidance is computed at API response time (see /api/snapshot); not stored in DB
-  buildGuidance({
-    score,
-    verdict,
-    netliqDir:   netliq_dir,
-    qeQtRegime:  qe_qt_regime,
-    stressed:    false,   // live stress is runtime-only; not computed here
-  });
 
   // ── boolean pillar flags (stored as INTEGER 0/1 in daily_snapshot) ────────
   const p0 = factors.rates >= 50 && factors.funding >= 50 && factors.credit >= 50;

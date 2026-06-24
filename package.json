@@ -10,7 +10,7 @@
     "migrate:local": "wrangler d1 migrations apply ca_liquidity --local",
     "migrate:remote": "wrangler d1 migrations apply ca_liquidity --remote",
     "migrate:list": "wrangler d1 migrations list ca_liquidity --remote",
-    "export:snapshots": "wrangler d1 execute ca_liquidity --remote --json --command \"SELECT date, factors_json, spx, qe_qt_regime, vix_eod FROM daily_snapshot WHERE spx IS NOT NULL ORDER BY date\" > scripts/data/snapshots.json"
+    "export:snapshots": "wrangler d1 execute ca_liquidity --remote --json --command \"SELECT date, factors_json, tsx, qe_qt_regime FROM daily_snapshot WHERE tsx IS NOT NULL ORDER BY date\" > scripts/data/snapshots.json"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240909.0",

@@ -65,31 +65,47 @@ describe('attributeScoreChange', () => {
 
 describe('decomposeNetliq (CA bridge: total_assets − notes_circ − goc_deposits − reverse_repo)', () => {
   // Concrete realistic BoC balance-sheet values (millions CAD)
-  const curBS = { total_assets: 225_775, notes_circ: 120_500, goc_deposits: 40_200, reverse_repo: 15_300 };
-  const refBS = { total_assets: 220_000, notes_circ: 119_800, goc_deposits: 38_000, reverse_repo: 14_000 };
+  // settlement_bal = real V36636 (may differ from bridge_approx due to other liabilities/equity)
+  const REAL_SETTL_BAL = 48_900;   // V36636 actual reported value (not equal to bridge_approx)
+  const REF_SETTL_BAL  = 47_200;
+  const curBS = { settlement_bal: REAL_SETTL_BAL, total_assets: 225_775, notes_circ: 120_500, goc_deposits: 40_200, reverse_repo: 15_300 };
+  const refBS = { settlement_bal: REF_SETTL_BAL,  total_assets: 220_000, notes_circ: 119_800, goc_deposits: 38_000, reverse_repo: 14_000 };
 
-  it('current netliq = total_assets − notes_circ − goc_deposits − reverse_repo', () => {
+  it('current.settlement_bal carries the REAL V36636 passed in (not the derived bridge sum)', () => {
     const d = decomposeNetliq(curBS, refBS);
-    const expected = curBS.total_assets - curBS.notes_circ - curBS.goc_deposits - curBS.reverse_repo;
-    expect(d.current.netliq).toBeCloseTo(expected, 6);
-    // Concrete: 225775 − 120500 − 40200 − 15300 = 49775
-    expect(d.current.netliq).toBeCloseTo(49_775, 6);
+    expect(d.current.settlement_bal).toBe(REAL_SETTL_BAL);
+    // bridge_approx = 225775 − 120500 − 40200 − 15300 = 49775 — differs from real settlement_bal
+    expect(d.current.bridge_approx).toBeCloseTo(49_775, 6);
+    expect(d.current.settlement_bal).not.toEqual(d.current.bridge_approx);
   });
 
-  it('delta netliq identity: Δnetliq = Δtotal_assets − Δnotes_circ − Δgoc_deposits − Δreverse_repo', () => {
+  it('reference.settlement_bal carries the REAL V36636 passed in', () => {
+    const d = decomposeNetliq(curBS, refBS);
+    expect(d.reference!.settlement_bal).toBe(REF_SETTL_BAL);
+  });
+
+  it('bridge_approx = total_assets − notes_circ − goc_deposits − reverse_repo', () => {
+    const d = decomposeNetliq(curBS, refBS);
+    const expected = curBS.total_assets - curBS.notes_circ - curBS.goc_deposits - curBS.reverse_repo;
+    expect(d.current.bridge_approx).toBeCloseTo(expected, 6);
+    // Concrete: 225775 − 120500 − 40200 − 15300 = 49775
+    expect(d.current.bridge_approx).toBeCloseTo(49_775, 6);
+  });
+
+  it('delta bridge_approx identity: Δbridge ≈ Δtotal_assets − Δnotes_circ − Δgoc_deposits − Δreverse_repo', () => {
     const d = decomposeNetliq(curBS, refBS);
     const dTotal = curBS.total_assets - refBS.total_assets;   //  5775
     const dNotes = curBS.notes_circ   - refBS.notes_circ;    //   700
     const dGoc   = curBS.goc_deposits - refBS.goc_deposits;  //  2200
     const dRrp   = curBS.reverse_repo - refBS.reverse_repo;  //  1300
-    expect(d.delta!.netliq).toBeCloseTo(dTotal - dNotes - dGoc - dRrp, 6);
+    expect(d.delta!.bridge_approx).toBeCloseTo(dTotal - dNotes - dGoc - dRrp, 6);
     // 5775 − 700 − 2200 − 1300 = 1575
-    expect(d.delta!.netliq).toBeCloseTo(1_575, 6);
+    expect(d.delta!.bridge_approx).toBeCloseTo(1_575, 6);
   });
 
-  it('delta.netliq = current.netliq − reference.netliq (consistency)', () => {
+  it('delta.settlement_bal = current.settlement_bal − reference.settlement_bal', () => {
     const d = decomposeNetliq(curBS, refBS);
-    expect(d.delta!.netliq).toBeCloseTo(d.current.netliq - d.reference!.netliq, 6);
+    expect(d.delta!.settlement_bal).toBeCloseTo(REAL_SETTL_BAL - REF_SETTL_BAL, 6);
   });
 
   it('reference null → reference and delta are null', () => {
@@ -98,11 +114,18 @@ describe('decomposeNetliq (CA bridge: total_assets − notes_circ − goc_deposi
     expect(d.delta).toBeNull();
   });
 
-  it('netliq ≈ settlement_bal (bridge semantic: decomposed netliq matches stored settlement_bal)', () => {
-    // The bridge produces the same number as settlement_bal in the DB
-    // Verify by checking total_assets - notes_circ - goc_deposits - reverse_repo = expected settlement_bal
-    const settlBal = curBS.total_assets - curBS.notes_circ - curBS.goc_deposits - curBS.reverse_repo;
-    const d = decomposeNetliq(curBS, null);
-    expect(d.current.netliq).toBeCloseTo(settlBal, 6);
+  it('null component → bridge_approx is null (no fabricated 0-coercion)', () => {
+    const curWithNull = { settlement_bal: REAL_SETTL_BAL, total_assets: 225_775, notes_circ: null, goc_deposits: 40_200, reverse_repo: 15_300 };
+    const d = decomposeNetliq(curWithNull, null);
+    // Real settlement_bal still propagates
+    expect(d.current.settlement_bal).toBe(REAL_SETTL_BAL);
+    // bridge_approx must be null, NOT 0 or a fabricated sum
+    expect(d.current.bridge_approx).toBeNull();
+  });
+
+  it('null settlement_bal in ref → delta.settlement_bal is null', () => {
+    const refNullSettl = { settlement_bal: null, total_assets: 220_000, notes_circ: 119_800, goc_deposits: 38_000, reverse_repo: 14_000 };
+    const d = decomposeNetliq(curBS, refNullSettl);
+    expect(d.delta!.settlement_bal).toBeNull();
   });
 });

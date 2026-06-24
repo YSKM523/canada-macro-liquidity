@@ -435,27 +435,56 @@ function divergingRow(label, value, max, key) {
     + `<span class="ex-val ${cls}">${sign}${value.toFixed(2)}</span></div>`;
 }
 
-// 结算余额拆解（CA 净流动性 = 结算余额，非 WALCL−TGA−RRP 公式）
+// 结算余额拆解（CA 净流动性 = BoC V36636 结算余额，直接报告值非推算）
 function renderSettlementBal(nl, win) {
   if (!nl || !nl.current) return '';
   const c = nl.current;
-  const settlBal = c.netliq ?? c.settlement_bal ?? 0;
-  const r = (x) => Math.round(x).toLocaleString();
-  const maxv = Math.max(Math.abs(settlBal), 1);
-  const w = (x) => Math.max(1, Math.min(100, Math.abs(x) / maxv * 100));
-  const bridge = `<div class="ex-bridge">`
-    + `<div class="br"><span class="lbl">BoC 结算余额(净流动性)</span><span class="barwrap"><span class="bar tot" style="width:${w(settlBal)}%"></span></span><span class="amt">${r(settlBal)}</span></div>`
+  // Headline: REAL V36636 stored value (settlement_bal); never coerce null to 0
+  const settlBal = c.settlement_bal;
+  const settlBalStr = settlBal != null ? Math.round(settlBal).toLocaleString() : '数据不足';
+  const maxv = settlBal != null ? Math.max(Math.abs(settlBal), 1) : 1;
+  const w = (x) => x != null ? Math.max(1, Math.min(100, Math.abs(x) / maxv * 100)) : 0;
+
+  // Headline row: real V36636
+  const headlineRow = `<div class="ex-bridge">`
+    + `<div class="br"><span class="lbl">结算余额 (V36636)</span>`
+    + (settlBal != null
+      ? `<span class="barwrap"><span class="bar tot" style="width:${w(settlBal)}%"></span></span><span class="amt">${settlBalStr}</span>`
+      : `<span class="barwrap"></span><span class="amt" style="color:var(--muted)">数据不足</span>`)
+    + `</div></div>`;
+
+  // Component bridge (approximate, for context)
+  const ta = c.total_assets, nc = c.notes_circ, gd = c.goc_deposits, rr = c.reverse_repo;
+  const ba = c.bridge_approx;
+  const r = (x) => x != null ? Math.round(x).toLocaleString() : '数据不足';
+  const bar = (x, cls) => x != null
+    ? `<span class="barwrap"><span class="bar ${cls}" style="width:${w(x)}%"></span></span>`
+    : `<span class="barwrap"></span>`;
+  const bridgeRows = `<div class="ex-bridge">`
+    + `<div class="br"><span class="lbl">总资产</span>${bar(ta, 'tot')}<span class="amt">${r(ta)}</span></div>`
+    + `<div class="br"><span class="lbl">− 流通钞券</span>${bar(nc, 'sub')}<span class="amt">${nc != null ? '−' + Math.round(nc).toLocaleString() : '数据不足'}</span></div>`
+    + `<div class="br"><span class="lbl">− GoC 存款</span>${bar(gd, 'sub')}<span class="amt">${gd != null ? '−' + Math.round(gd).toLocaleString() : '数据不足'}</span></div>`
+    + `<div class="br"><span class="lbl">− 逆回购</span>${bar(rr, 'sub')}<span class="amt">${rr != null ? '−' + Math.round(rr).toLocaleString() : '数据不足'}</span></div>`
+    + `<div class="br"><span class="lbl">≈ 桥接近似值</span>${bar(ba, 'tot')}<span class="amt">${r(ba)}</span></div>`
     + `</div>`;
+
   let note = '';
   if (nl.delta) {
     const d = nl.delta;
     const tag = (v) => {
+      if (v == null) return '<span class="ex-down">数据不足</span>';
       const up = v >= 0;
       return `<span class="${up ? 'ex-up' : 'ex-down'}">${up ? '+' : ''}${Math.round(v)}</span>`;
     };
-    note = `<p class="ex-note">较${EX_WINDOW_LABEL[win] || '基准'} 结算余额 ${tag(d.netliq ?? d.settlement_bal ?? 0)}M CAD</p>`;
+    note = `<p class="ex-note">较${EX_WINDOW_LABEL[win] || '基准'} 结算余额 ${tag(d.settlement_bal)}M CAD</p>`;
   }
-  return `<div class="ex-sub">结算余额（百万 CAD，BoC B2_WEEKLY）</div>${bridge}${note}`;
+
+  return `<div class="ex-sub">结算余额（百万 CAD，BoC V36636 B2_WEEKLY）</div>`
+    + headlineRow
+    + note
+    + `<div class="ex-sub" style="margin-top:12px">资产负债表构成（近似桥接）</div>`
+    + `<p class="ex-note" style="margin-bottom:6px">以下为四项资产负债表分项推算，与上方 V36636 实报值存在其他负债/权益偏差</p>`
+    + bridgeRows;
 }
 
 // ── 汇率面板 ──────────────────────────────────────────────────────────────

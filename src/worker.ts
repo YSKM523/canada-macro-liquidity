@@ -110,16 +110,18 @@ export default {
           : null;
         const netliq = decomposeNetliq(
           {
-            total_assets: cur.total_assets,
-            notes_circ:   cur.notes_circ,
-            goc_deposits: cur.goc_deposits,
-            reverse_repo: cur.reverse_repo,
+            settlement_bal: cur.settlement_bal,
+            total_assets:   cur.total_assets,
+            notes_circ:     cur.notes_circ,
+            goc_deposits:   cur.goc_deposits,
+            reverse_repo:   cur.reverse_repo,
           },
           reference ? {
-            total_assets: reference.total_assets,
-            notes_circ:   reference.notes_circ,
-            goc_deposits: reference.goc_deposits,
-            reverse_repo: reference.reverse_repo,
+            settlement_bal: reference.settlement_bal,
+            total_assets:   reference.total_assets,
+            notes_circ:     reference.notes_circ,
+            goc_deposits:   reference.goc_deposits,
+            reverse_repo:   reference.reverse_repo,
           } : null,
         );
 

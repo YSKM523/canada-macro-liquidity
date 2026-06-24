@@ -158,6 +158,18 @@ body{margin:0;background:var(--surface);color:var(--ink);
 .ex-bridge .amt{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
 @media(max-width:760px){.ex-row{grid-template-columns:72px 1fr 52px}.ex-bridge .br{grid-template-columns:96px 1fr 80px}}
 
+/* ── FX panel ───────────────────────────────────────────────────────────── */
+.fx-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.fx-row:last-child{border-bottom:none}
+.fx-label{color:var(--muted)}
+.fx-val{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+
+/* ── Signals panel ──────────────────────────────────────────────────────── */
+.sig-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.sig-row:last-child{border-bottom:none}
+.sig-label{color:var(--muted)}
+.sig-val{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+
 /* ── Robustness panel ───────────────────────────────────────────────────── */
 .rb-sub{font-size:13px;color:var(--muted);font-weight:600;margin:16px 0 8px}
 .rb-stat{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:13px;color:var(--ink);padding:2px 0}
