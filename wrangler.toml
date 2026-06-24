@@ -1,0 +1,19 @@
+name = "ca-liquidity-dashboard"
+main = "src/worker.ts"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ca_liquidity"
+database_id = "24f0b46a-aeb0-4fa5-aecf-c13c7f62c676"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["0 */3 * * *"]
+
+[vars]
+START_DATE = "2017-01-01"

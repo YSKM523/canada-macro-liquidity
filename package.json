@@ -1,0 +1,21 @@
+{
+  "name": "ca-liquidity-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply ca_liquidity --local",
+    "migrate:remote": "wrangler d1 migrations apply ca_liquidity --remote",
+    "migrate:list": "wrangler d1 migrations list ca_liquidity --remote",
+    "export:snapshots": "wrangler d1 execute ca_liquidity --remote --json --command \"SELECT date, factors_json, spx, qe_qt_regime, vix_eod FROM daily_snapshot WHERE spx IS NOT NULL ORDER BY date\" > scripts/data/snapshots.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "wrangler": "^3.80.0",
+    "@cloudflare/workers-types": "^4.20240909.0"
+  }
+}
