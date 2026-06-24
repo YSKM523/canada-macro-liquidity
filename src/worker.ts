@@ -1,6 +1,7 @@
 import type { Env } from './service';
 import { runIngest } from './service';
-import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs } from './db';
+import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs, snapshotOnOrBefore } from './db';
+import { factorContributions, attributeScoreChange, decomposeNetliq } from './explain';
 import { fetchLivePrices, fetchStressSeries, evaluateLiveStress } from './prices';
 import { policyRegime, downgradeVerdict, buildGuidance } from './metrics';
 import { COVERAGE_FACTORS, INGEST_STALE_HOURS, STRESS_SCORE_CEILING, SERIES } from './config';
@@ -85,6 +86,70 @@ export default {
           coverage_total: COVERAGE_FACTORS.length,
         };
         return json({ snapshot: snap, live, ingest, signals });
+      }
+
+      if (p === '/api/explain') {
+        const wparam = url.searchParams.get('window');
+        const window = (wparam === '1m' || wparam === '3m') ? wparam : '1w';
+        const days = window === '3m' ? 91 : window === '1m' ? 30 : 7;
+
+        const cur: any = await latestSnapshot(env.DB);
+        if (!cur) return json({ window, error: 'no_data' });
+
+        const refDate = new Date(new Date(cur.date + 'T00:00:00Z').getTime() - days * 86400000)
+          .toISOString().slice(0, 10);
+        const refRow: any = await snapshotOnOrBefore(env.DB, refDate);
+        const reference = (refRow && refRow.date !== cur.date) ? refRow : null;
+
+        const curFactors = JSON.parse(cur.factors_json ?? '{}');
+        const contributions = factorContributions(curFactors);
+        const attribution = reference
+          ? attributeScoreChange(curFactors, JSON.parse(reference.factors_json ?? '{}'))
+          : null;
+        const netliq = decomposeNetliq(
+          {
+            total_assets: cur.total_assets,
+            notes_circ:   cur.notes_circ,
+            goc_deposits: cur.goc_deposits,
+            reverse_repo: cur.reverse_repo,
+          },
+          reference ? {
+            total_assets: reference.total_assets,
+            notes_circ:   reference.notes_circ,
+            goc_deposits: reference.goc_deposits,
+            reverse_repo: reference.reverse_repo,
+          } : null,
+        );
+
+        return json({
+          window,
+          current: {
+            date:         cur.date,
+            score:        cur.score,
+            netliq:       cur.netliq,
+            settlement_bal: cur.settlement_bal,
+            total_assets: cur.total_assets,
+            notes_circ:   cur.notes_circ,
+            goc_deposits: cur.goc_deposits,
+            reverse_repo: cur.reverse_repo,
+            tsx:          cur.tsx,
+          },
+          reference: reference ? {
+            date:         reference.date,
+            score:        reference.score,
+            netliq:       reference.netliq,
+            settlement_bal: reference.settlement_bal,
+            total_assets: reference.total_assets,
+            notes_circ:   reference.notes_circ,
+            goc_deposits: reference.goc_deposits,
+            reverse_repo: reference.reverse_repo,
+            tsx:          reference.tsx,
+          } : null,
+          deltaScore: reference ? cur.score - reference.score : null,
+          contributions,
+          attribution,
+          netliq,
+        });
       }
 
       if (p === '/api/admin/refresh' && req.method === 'POST') {
