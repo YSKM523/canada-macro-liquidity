@@ -29,13 +29,15 @@ function eachDay(from: string, to: string): string[] {
   return out;
 }
 
-export async function runIngest(env: Env, rebuildAll = false): Promise<{ updated: number; snapshots: number }> {
+export async function runIngest(env: Env, rebuildAll = false): Promise<{ updated: number; snapshots: number; skipped: string[] }> {
   await setMeta(env.DB, 'last_attempt_at', new Date().toISOString());
   try {
     let updated = 0;
+    const skipped: string[] = [];
 
-    // 1) BoC: one multi-series call for all BoC series.
-    // Use earliest maxObsDate across BoC series (or START_DATE on first run).
+    // ─── CORE: BoC Valet (load-bearing) ─────────────────────────────────────
+    // V36610/V36636 drive snapshot dates + net liquidity.
+    // If this throws (after retries), it IS a real error → fall to outer catch.
     const bocDates = await Promise.all(SERIES_IDS_BOC.map(id => maxObsDate(env.DB, id)));
     const bocEarliestLast = bocDates.reduce<string | null>((min, d) => {
       if (d == null) return null;           // any series missing → full pull
@@ -43,34 +45,50 @@ export async function runIngest(env: Env, rebuildAll = false): Promise<{ updated
       return d < min ? d : min;
     }, bocDates[0] ?? null);
     const bocFrom = bocEarliestLast ?? env.START_DATE;
-    const bocData = await fetchBocSeries(SERIES_IDS_BOC, bocFrom);
+    const bocData = await fetchBocSeries(SERIES_IDS_BOC, bocFrom);  // throws on failure
     for (const id of SERIES_IDS_BOC) {
       const rows = bocData[id] ?? [];
       await upsertObservations(env.DB, id, rows);
       updated += rows.length;
     }
 
-    // 2) FRED: one call per series id, incremental from maxObsDate.
+    // ─── PERIPHERAL: FRED ───────────────────────────────────────────────────
+    // Each series is independently wrapped — one failure doesn't abort the rest.
     for (const id of SERIES_IDS_FRED) {
-      const last = await maxObsDate(env.DB, id);
-      const from = last ?? env.START_DATE;
-      const rows = await fetchFredSeries(id, from);
-      await upsertObservations(env.DB, id, rows);
-      updated += rows.length;
+      try {
+        const last = await maxObsDate(env.DB, id);
+        const from = last ?? env.START_DATE;
+        const rows = await fetchFredSeries(id, from);
+        await upsertObservations(env.DB, id, rows);
+        updated += rows.length;
+      } catch {
+        skipped.push(`FRED:${id}`);
+      }
     }
 
-    // 3) Yahoo daily:
-    //    TSX: fetch '^GSPTSE', store under key '^GSPTSE' (= SERIES.TSX.id)
-    //    WTI: fetch 'CL=F'  , store under key 'WTI'     (= SERIES.WTI.id)
-    const tsxRows = await fetchYahooDaily(YAHOO_SYMBOLS.TSX);   // symbol = '^GSPTSE'
-    await upsertObservations(env.DB, SERIES.TSX.id, tsxRows);   // key    = '^GSPTSE'
-    updated += tsxRows.length;
+    // ─── PERIPHERAL: Yahoo ──────────────────────────────────────────────────
+    // TSX: store under SERIES.TSX.id (= '^GSPTSE')
+    try {
+      const tsxRows = await fetchYahooDaily(YAHOO_SYMBOLS.TSX);
+      await upsertObservations(env.DB, SERIES.TSX.id, tsxRows);
+      updated += tsxRows.length;
+    } catch {
+      skipped.push(`Yahoo:${YAHOO_SYMBOLS.TSX}`);
+    }
 
-    const wtiRows = await fetchYahooDaily(YAHOO_SYMBOLS.WTI);   // symbol = 'CL=F'
-    await upsertObservations(env.DB, SERIES.WTI.id, wtiRows);   // key    = 'WTI'
-    updated += wtiRows.length;
+    // WTI: store under SERIES.WTI.id (= 'WTI')
+    try {
+      const wtiRows = await fetchYahooDaily(YAHOO_SYMBOLS.WTI);
+      await upsertObservations(env.DB, SERIES.WTI.id, wtiRows);
+      updated += wtiRows.length;
+    } catch {
+      skipped.push(`Yahoo:${YAHOO_SYMBOLS.WTI}`);
+    }
 
-    // 4) Rebuild snapshots keyed to V36610 (BoC total assets) dates.
+    // ─── Snapshot rebuild ───────────────────────────────────────────────────
+    // Only needs core BoC data (which succeeded above).
+    // Peripheral series that were skipped contribute via their last-stored values
+    // — the asOf() mechanic reads from DB, never fabricates.
     const m = await loadSeriesMap(env.DB);
     const totalAssetsSeries = m[SERIES.TOTAL_ASSETS.id] ?? [];  // V36610
     const tsxSeries = m[SERIES.TSX.id] ?? [];                   // '^GSPTSE'
@@ -78,15 +96,12 @@ export async function runIngest(env: Env, rebuildAll = false): Promise<{ updated
     let snapshots = 0;
 
     if (lastDate) {
-      // rebuildAll: iterate all balance-sheet dates (weekly cadence from V36610)
-      // incremental: rebuild last 14 days only
       const dates = rebuildAll
         ? totalAssetsSeries.map(o => o.date)
         : eachDay(addDays(lastDate, -14), lastDate);
 
       let prev: Verdict | undefined;
       for (const date of dates) {
-        // Only compute snapshot if total assets has data on or before this date
         if (asOf(totalAssetsSeries, date) == null) continue;
         const snap = computeSnapshot(m, date, prev);
         await upsertSnapshot(env.DB, snap, asOf(tsxSeries, date));
@@ -100,7 +115,8 @@ export async function runIngest(env: Env, rebuildAll = false): Promise<{ updated
     await setMeta(env.DB, 'last_error', '');
     await setMeta(env.DB, 'last_updated', String(updated));
     await setMeta(env.DB, 'last_snapshots', String(snapshots));
-    return { updated, snapshots };
+    await setMeta(env.DB, 'last_partial', skipped.join(','));
+    return { updated, snapshots, skipped };
   } catch (e) {
     await setMeta(env.DB, 'last_status', 'error');
     await setMeta(env.DB, 'last_error', String((e as any)?.message ?? e));

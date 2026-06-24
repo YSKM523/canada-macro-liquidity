@@ -86,6 +86,7 @@ function showBanner(text) {
 }
 
 // 摄取异常（cron 停了/BoC 失败）才报红；正常周线数据滞后不报。
+// partial（外围源跳过）用静音提示，不触发红色告警。
 function renderIngest(ingest) {
   const el = document.getElementById('data-staleness');
   if (!el || !ingest) return;
@@ -94,6 +95,12 @@ function renderIngest(ingest) {
     const hrs = age != null ? Math.round(age) : '?';
     el.textContent += `　⚠️ 数据更新异常（上次成功 ${hrs} 小时前）`;
     el.style.color = '#C53030';
+  } else if (ingest.partial) {
+    // Muted info note — peripheral sources were skipped; last real stored values used
+    const note = document.createElement('span');
+    note.style.cssText = 'color:#888;font-size:0.8em;margin-left:0.4em;';
+    note.textContent = `ℹ️ 本轮跳过 ${ingest.partial}（已用上次值）`;
+    el.appendChild(note);
   }
 }
 

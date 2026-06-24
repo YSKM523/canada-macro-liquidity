@@ -35,7 +35,8 @@ export default {
             now: new Date().toISOString(),
             staleHours: INGEST_STALE_HOURS,
           });
-          return json(h, h.ok ? 200 : 503);
+          // partial: non-empty when peripheral sources were skipped (not a health failure)
+          return json({ ...h, partial: meta.last_partial || '' }, h.ok ? 200 : 503);
         } catch (e) {
           return json({ ok: false, stale: true, error: 'db_unreachable', message: String((e as any)?.message ?? e) }, 503);
         }
@@ -65,6 +66,8 @@ export default {
             ? (Date.now() - Date.parse(meta.last_ingest_at)) / 3600000
             : null,
           ingest_status: meta.last_status ?? null,
+          // partial: comma-separated identifiers of skipped peripheral sources (not a red alarm)
+          partial: meta.last_partial || '',
         };
         const signals = { cadcny, us_rate, corra, target };
         if (!row) return json({ snapshot: null, live, ingest, signals, error: 'no_data' });

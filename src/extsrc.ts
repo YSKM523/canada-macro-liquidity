@@ -1,4 +1,5 @@
 import type { Obs } from './boc';
+import { fetchRetry } from './http';
 
 export function parseFredCsv(csv: string): Obs[] {
   const lines = csv.trim().split('\n');
@@ -27,14 +28,14 @@ export function parseYahooCloses(json: any): Obs[] {
 
 export async function fetchFredSeries(id: string, from: string): Promise<Obs[]> {
   const url = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}&cosd=${from}`;
-  const r = await fetch(url);
+  const r = await fetchRetry(url);
   if (!r.ok) throw new Error(`FRED ${r.status} for ${id}`);
   return parseFredCsv(await r.text());
 }
 
 export async function fetchYahooDaily(symbol: string, range = '10y'): Promise<Obs[]> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${range}`;
-  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const r = await fetchRetry(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   if (!r.ok) throw new Error(`Yahoo ${r.status} for ${symbol}`);
   return parseYahooCloses(await r.json());
 }
