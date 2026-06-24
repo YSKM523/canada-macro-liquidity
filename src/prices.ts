@@ -88,7 +88,9 @@ export async function fetchStressSeries(): Promise<StressSeries> {
 
 // ── Stress evaluation ─────────────────────────────────────────────────────────
 
-export function evaluateLiveStress(s: StressSeries, t = STRESS): LiveStress {
+export interface StressThresholds { vix: number; tsxDd: number; usdcad: number; wti: number; }
+
+export function evaluateLiveStress(s: StressSeries, t: StressThresholds = STRESS): LiveStress {
   const last = (a: number[]): number | null => a.length ? a[a.length - 1] : null;
   const ago5 = (a: number[]): number | null =>
     a.length >= 6 ? a[a.length - 6] : (a.length ? a[0] : null);
