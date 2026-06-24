@@ -39,8 +39,41 @@ export default {
       }
 
       if (p === '/api/snapshot') {
-        // Stub — filled in Task 12
-        return json({ error: 'not_ready' }, 503);
+        const [row, live, stress, meta] = await Promise.all([
+          latestSnapshot(env.DB),
+          fetchLivePrices(new Date().toISOString()),
+          fetchStressSeries().then(s => evaluateLiveStress(s)),
+          getAllMeta(env.DB),
+        ]);
+        const ingest = {
+          ingest_at: meta.last_ingest_at ?? null,
+          last_attempt_at: meta.last_attempt_at ?? null,
+          ingest_age_hours: meta.last_ingest_at
+            ? (Date.now() - Date.parse(meta.last_ingest_at)) / 3600000
+            : null,
+          ingest_status: meta.last_status ?? null,
+        };
+        if (!row) return json({ snapshot: null, live, ingest, error: 'no_data' });
+        const r: any = row;
+        const display_verdict = (stress.stressed && r.score < STRESS_SCORE_CEILING)
+          ? downgradeVerdict(r.verdict)
+          : r.verdict;
+        const guidance = buildGuidance({
+          score: r.score,
+          verdict: r.verdict,
+          netliqDir: r.netliq_dir,
+          qeQtRegime: r.qe_qt_regime,
+          stressed: stress.stressed,
+        });
+        const snap = {
+          ...r,
+          policy_regime: policyRegime(r.qe_qt_regime, r.date),
+          display_verdict,
+          live_stress: stress,
+          guidance,
+          coverage_total: COVERAGE_FACTORS.length,
+        };
+        return json({ snapshot: snap, live, ingest });
       }
 
       if (p === '/api/admin/refresh' && req.method === 'POST') {
