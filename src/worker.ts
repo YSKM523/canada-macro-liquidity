@@ -1,11 +1,13 @@
 import type { Env } from './service';
 import { runIngest } from './service';
-import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs, snapshotOnOrBefore } from './db';
+import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs, snapshotOnOrBefore, loadBacktestRows } from './db';
 import { factorContributions, attributeScoreChange, decomposeNetliq } from './explain';
 import { fetchLivePrices, fetchStressSeries, evaluateLiveStress } from './prices';
 import { policyRegime, downgradeVerdict, buildGuidance } from './metrics';
 import { COVERAGE_FACTORS, INGEST_STALE_HOURS, STRESS_SCORE_CEILING, SERIES } from './config';
 import { assessHealth } from './health';
+import { runRobustness } from './robustness';
+import { runBacktest } from './backtest';
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
@@ -150,6 +152,38 @@ export default {
           attribution,
           netliq,
         });
+      }
+
+      if (p === '/api/robustness') {
+        // tsx→spx boundary mapping: CA has no SPX; TSX plays the price role.
+        // vix_eod is always null in CA — the vix regime axis will be empty (rows excluded), not crash.
+        const rows = await loadBacktestRows(env.DB);
+        const snaps = rows
+          .filter((r: any) => r.tsx != null && r.score != null && r.factors_json)
+          .map((r: any) => ({
+            date: r.date as string,
+            score: r.score as number,
+            spx: r.tsx as number,          // TSX fills the spx role
+            factors: JSON.parse(r.factors_json),
+            regime: r.qe_qt_regime as string | undefined,
+            vix: r.vix_eod as number | null ?? undefined,
+          }));
+        return json(runRobustness(snaps));
+      }
+
+      if (p === '/api/backtest') {
+        const rows = await loadBacktestRows(env.DB);
+        const snaps = rows
+          .filter((r: any) => r.tsx != null && r.score != null && r.factors_json)
+          .map((r: any) => ({
+            date: r.date as string,
+            score: r.score as number,
+            spx: r.tsx as number,          // TSX fills the spx role
+            factors: JSON.parse(r.factors_json),
+            regime: r.qe_qt_regime as string | undefined,
+            vix: r.vix_eod as number | null ?? undefined,
+          }));
+        return json(runBacktest(snaps));
       }
 
       if (p === '/api/admin/refresh' && req.method === 'POST') {
