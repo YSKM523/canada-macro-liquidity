@@ -21,9 +21,16 @@ export const SERIES_IDS_FRED = Object.values(SERIES).filter(s => s.source === 'f
 export const YAHOO_SYMBOLS = { TSX: '^GSPTSE', WTI: 'CL=F' } as const;
 
 export const FACTOR_KEYS = ['netliqTrend','reserveAdequacy','impulse','curve','dollar','oil','funding','rates','credit'] as const;
+// Weights calibrated 2026-06-24 from real TSX backtest (2017-01-04→2026-06-17, n=494 snapshots).
+// Composite IC (13w Spearman) = -0.067 (bootstrap 95% CI: [-0.324, +0.206], p=0.70, n_independent=37).
+// Signal is WEAK — weights are structural priors informed by per-factor IC signs, not fitted alpha.
+// Factors with clearly negative IC across all horizons (impulse, dollar, oil, funding) are held at
+// minimum weight (0.06); positive-IC factors (curve, reserveAdequacy, rates, credit) receive
+// proportionally more weight. netliqTrend (structural settlement-balance signal, 13w IC = +0.04) retains
+// the largest single weight. Σ = 1.00.
 export const WEIGHTS = {
-  netliqTrend: 0.30, reserveAdequacy: 0.10, impulse: 0.08, curve: 0.12,
-  dollar: 0.12, oil: 0.08, funding: 0.08, rates: 0.06, credit: 0.06,
+  netliqTrend: 0.25, reserveAdequacy: 0.12, impulse: 0.06, curve: 0.18,
+  dollar: 0.06, oil: 0.06, funding: 0.06, rates: 0.11, credit: 0.10,
 } as const;
 
 export const COVERAGE_FACTORS = FACTOR_KEYS;
