@@ -3,8 +3,8 @@ import { runIngest } from './service';
 import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs, snapshotOnOrBefore, loadBacktestRows } from './db';
 import { factorContributions, attributeScoreChange, decomposeNetliq } from './explain';
 import { fetchLivePrices, fetchStressSeries, evaluateLiveStress } from './prices';
-import { policyRegime, downgradeVerdict, buildGuidance } from './metrics';
-import { COVERAGE_FACTORS, INGEST_STALE_HOURS, STRESS_SCORE_CEILING, SERIES } from './config';
+import { policyRegime, displayVerdict, buildGuidance } from './metrics';
+import { COVERAGE_FACTORS, INGEST_STALE_HOURS, SERIES } from './config';
 import { assessHealth } from './health';
 import { runRobustness } from './robustness';
 import { runBacktest } from './backtest';
@@ -72,9 +72,7 @@ export default {
         const signals = { cadcny, us_rate, corra, target };
         if (!row) return json({ snapshot: null, live, ingest, signals, error: 'no_data' });
         const r: any = row;
-        const display_verdict = (stress.stressed && r.score < STRESS_SCORE_CEILING)
-          ? downgradeVerdict(r.verdict)
-          : r.verdict;
+        const display_verdict = displayVerdict(r.verdict, stress.stressed);
         const guidance = buildGuidance({
           score: r.score,
           verdict: r.verdict,

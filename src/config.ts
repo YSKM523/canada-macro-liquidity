@@ -42,6 +42,5 @@ export const COVERAGE_FACTORS = FACTOR_KEYS;
 export const CA_QT_END_DATE = '2025-03-05';
 export const VERDICT_BANDS = { bull: 55, bear: 45 } as const;
 export const STRESS = { vix: 25, tsxDd: -0.04, usdcad: 0.02, wti: -0.08 } as const; // 5-day thresholds
-export const STRESS_SCORE_CEILING = 55;
 export const INGEST_STALE_HOURS = 12;
 export const NETLIQ_TREND_WEEKS = 13;

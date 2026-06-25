@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verdictFromScore, downgradeVerdict, buildGuidance } from '../src/metrics';
+import { verdictFromScore, downgradeVerdict, displayVerdict, buildGuidance } from '../src/metrics';
 
 describe('verdict + guidance', () => {
   it('bands + hysteresis', () => {
@@ -14,5 +14,26 @@ describe('verdict + guidance', () => {
   });
   it('stress forces brake tone', () => {
     expect(buildGuidance({ score: 60, verdict: 'BULLISH', netliqDir: 'UP', qeQtRegime: 'EXPANDING', stressed: true }).tone).toBe('brake');
+  });
+
+  describe('displayVerdict — live stress must never show bullish', () => {
+    it('P0: stressed + bullish (score 60) → never BULLISH', () => {
+      // score 60 → verdictFromScore = BULLISH; under a live stress event the
+      // headline must downgrade regardless of how high the macro score is.
+      expect(verdictFromScore(60)).toBe('BULLISH');
+      const shown = displayVerdict('BULLISH', true);
+      expect(shown).not.toBe('BULLISH');
+      expect(['NEUTRAL', 'BEARISH']).toContain(shown);
+    });
+    it('stressed downgrades one notch across all verdicts', () => {
+      expect(displayVerdict('BULLISH', true)).toBe('NEUTRAL');
+      expect(displayVerdict('NEUTRAL', true)).toBe('BEARISH');
+      expect(displayVerdict('BEARISH', true)).toBe('BEARISH');
+    });
+    it('no stress leaves the macro verdict untouched', () => {
+      expect(displayVerdict('BULLISH', false)).toBe('BULLISH');
+      expect(displayVerdict('NEUTRAL', false)).toBe('NEUTRAL');
+      expect(displayVerdict('BEARISH', false)).toBe('BEARISH');
+    });
   });
 });

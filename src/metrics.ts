@@ -69,6 +69,16 @@ export function downgradeVerdict(v: Verdict): Verdict {
   return v === 'BULLISH' ? 'NEUTRAL' : v === 'NEUTRAL' ? 'BEARISH' : 'BEARISH';
 }
 
+// Headline verdict the UI actually shows. When a live stress event is active the
+// macro verdict is downgraded one notch (BULLISH→NEUTRAL→BEARISH) regardless of
+// the macro score — a high score is exactly when a sudden risk spike is most
+// dangerous to flash green. Keeps the headline consistent with buildGuidance's
+// stress-first RISK-OFF tone. No score gate (the old STRESS_SCORE_CEILING bug
+// let a high-score BULLISH survive a live stress event).
+export function displayVerdict(v: Verdict, stressed: boolean): Verdict {
+  return stressed ? downgradeVerdict(v) : v;
+}
+
 export type Impulse = 'EXPANDING' | 'CONTRACTING' | 'FLAT';
 export type Direction = 'UP' | 'DOWN' | 'FLAT';
 
