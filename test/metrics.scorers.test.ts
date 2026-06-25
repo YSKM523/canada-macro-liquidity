@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scoreDollar, scoreFunding, asOf, scoreNetliqTrend } from '../src/metrics';
+import { scoreDollar, scoreFunding, asOf, scoreNetliqTrend, scoreImpulse } from '../src/metrics';
 
 const mk = (vals: number[]) => vals.map((v, i) => ({ date: `2026-01-${String(i + 1).padStart(2, '0')}`, value: v }));
 
@@ -42,5 +42,28 @@ describe('scoreNetliqTrend (regression test for string-date bug)', () => {
     const lastDate = `2026-01-${String(values.length).padStart(2, '0')}`;
     const score = scoreNetliqTrend(series, lastDate, 13);
     expect(score).toBeLessThan(50);
+  });
+});
+
+describe('scoreImpulse measures Δ4w balance-sheet expansion, NOT level', () => {
+  const mkN = (vals: number[]) =>
+    vals.map((v, i) => ({ date: `2026-01-${String(i + 1).padStart(2, '0')}`, value: v }));
+  const last = (vals: number[]) => `2026-01-${String(vals.length).padStart(2, '0')}`;
+
+  it('high-but-flat balance sheet has zero recent impulse → not bullish (<50), despite elevated level', () => {
+    // ramps up, then sits flat at a high level → level z-score would say BULLISH,
+    // but the 4-week change has decayed to 0 → impulse must read neutral-to-bearish.
+    const v = [100,104,108,112,116,120,124,128, 128,128,128,128,128,128];
+    expect(scoreImpulse(mkN(v), last(v))).toBeLessThan(50);
+  });
+
+  it('contracting from a high level → bearish (<50), even though level stays high', () => {
+    const v = [100,110,120,130,140,150,160,170,180, 165]; // recent 4w change turns small/negative
+    expect(scoreImpulse(mkN(v), last(v))).toBeLessThan(50);
+  });
+
+  it('recent sharp expansion off a mid level → bullish (>50), even though level is below its history', () => {
+    const v = [200,200,200,200, 100,100,100,100, 130]; // recent 4w change is the largest positive
+    expect(scoreImpulse(mkN(v), last(v))).toBeGreaterThan(50);
   });
 });

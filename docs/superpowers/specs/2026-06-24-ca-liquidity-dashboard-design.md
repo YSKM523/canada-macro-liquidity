@@ -74,7 +74,7 @@
 |---|---|---|---|
 | netliqTrend | 结算余额 13 周趋势 | V36636 | 0.30 |
 | reserveAdequacy | 结算余额水平/充裕度 | V36636 | 0.10 |
-| impulse | 总资产扩/缩(QE/QT) | V36610 | 0.08 |
+| impulse | 总资产 4 周扩缩 Δ4w(QE/QT,非水平) | V36610 | 0.08 |
 | curve | GoC 10Y − 2Y 斜率 | BD.CDN.10/2YR | 0.12 |
 | dollar | USD/CAD 趋势(加元走弱=逆风) | FXUSDCAD | 0.12 |
 | oil | WTI 趋势(加元/能源股顺风) | CL=F | 0.08 |

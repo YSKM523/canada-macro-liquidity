@@ -1,4 +1,4 @@
-import { VERDICT_BANDS, CA_QT_END_DATE, SERIES, WEIGHTS, FACTOR_KEYS, COVERAGE_FACTORS, NETLIQ_TREND_WEEKS } from './config';
+import { VERDICT_BANDS, CA_QT_END_DATE, SERIES, WEIGHTS, FACTOR_KEYS, COVERAGE_FACTORS, NETLIQ_TREND_WEEKS, IMPULSE_DELTA_WEEKS } from './config';
 
 export interface Obs { date: string; value: number }
 
@@ -26,12 +26,14 @@ export const scoreDollar = (usdcad: Obs[], d: string) => zScore(usdcad, d, -1);
 export const scoreOil = (wti: Obs[], d: string) => zScore(wti, d, 1);
 export const scoreRates = (goc10: Obs[], d: string) => zScore(goc10, d, -1);
 export const scoreCredit = (hy: Obs[], d: string) => zScore(hy, d, -1);
-export const scoreImpulse = (assets: Obs[], d: string) => zScore(assets, d, 1);
 export const scoreReserveAdequacy = (sb: Obs[], d: string) => zScore(sb, d, 1);
 
-// trend = 13wk change z; curve/funding = level spreads
-export function scoreNetliqTrend(sb: Obs[], d: string, weeks = 13): number {
-  const v = sb.filter(o => o.date <= d).map(o => o.value);
+// Δ-over-N-weeks z-score: how unusual is the most recent N-week *change* vs the
+// history of N-week changes. Both flow factors use this (level z-scores are for
+// stock/spread factors like reserveAdequacy/curve/funding) so "trend" and
+// "impulse" are genuinely change signals, not levels.
+function changeZScore(series: Obs[], d: string, weeks: number): number {
+  const v = series.filter(o => o.date <= d).map(o => o.value);
   if (v.length <= weeks) return 50;
   const chg: number[] = [];
   for (let i = weeks; i < v.length; i++) chg.push(v[i] - v[i - weeks]);
@@ -39,6 +41,18 @@ export function scoreNetliqTrend(sb: Obs[], d: string, weeks = 13): number {
   const { m, sd } = stats(chg);
   const z = (chg[chg.length - 1] - m) / sd;
   return Math.max(0, Math.min(100, 50 + z * 20));
+}
+
+// netliqTrend = settlement-balance Δ13w change z (rising = liquidity easing = bullish)
+export function scoreNetliqTrend(sb: Obs[], d: string, weeks = NETLIQ_TREND_WEEKS): number {
+  return changeZScore(sb, d, weeks);
+}
+
+// impulse = total-assets Δ4w expansion/contraction z (QE/QT impulse, not the level).
+// Same 4-week delta the qe_qt_regime label uses — a high-but-flat balance sheet has
+// zero impulse, a fast-expanding one is bullish.
+export function scoreImpulse(assets: Obs[], d: string, weeks = IMPULSE_DELTA_WEEKS): number {
+  return changeZScore(assets, d, weeks);
 }
 
 export function scoreCurve(goc10: Obs[], goc2: Obs[], d: string): number {

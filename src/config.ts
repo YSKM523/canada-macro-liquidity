@@ -24,12 +24,16 @@ export const FACTOR_KEYS = ['netliqTrend','reserveAdequacy','impulse','curve','d
 // Weights calibrated 2026-06-24 from REAL src/ code (scripts/calibrate.ts → scripts/calibration-output.json).
 // No reimplementation — computeSnapshot/runBacktest/runRobustness imported directly from src/.
 // Window: 2017-01-04→2026-06-17, n=494 snapshots, ~9.45 years.
-// Composite IC (13w Spearman) = -0.017 (bootstrap 95% CI: [-0.268, +0.242], p=0.5585, n_independent=37).
-// Signal is WEAK — weights are structural priors informed by per-factor IC signs, not fitted alpha.
-// Factors with clearly negative IC across all horizons (impulse, dollar, oil, funding) are held at
-// minimum weight (0.06); positive-IC factors (curve, reserveAdequacy, rates, credit) receive
-// proportionally more weight. netliqTrend (structural settlement-balance signal, 13w IC = +0.044) retains
-// the largest single weight. Σ = 1.00.
+// Composite IC (13w Spearman) = +0.005 (bootstrap 95% CI: [-0.237, +0.247], p=0.483, n_independent=37)
+//   — recomputed 2026-06-25 after the impulse Δ4w fix; still ~0 / not significant (signal is WEAK).
+// Weights are structural priors informed by per-factor IC signs, not fitted alpha.
+// Factors with clearly negative IC across all horizons (dollar, oil, funding) are held at minimum
+// weight (0.06); positive-IC factors (curve, reserveAdequacy, rates, credit) receive proportionally
+// more weight. netliqTrend (structural settlement-balance signal, 13w IC = +0.044) retains the
+// largest single weight. Σ = 1.00.
+// NOTE: impulse was fixed from a total-assets *level* z-score to a Δ4w *change* z-score (2026-06-25),
+// flipping its IC positive (13w +0.051). Its weight is deliberately LEFT at the 0.06 floor for this
+// consistency-only change (not re-fit); a future re-weight may promote it into the positive-IC group.
 export const WEIGHTS = {
   netliqTrend: 0.25, reserveAdequacy: 0.12, impulse: 0.06, curve: 0.18,
   dollar: 0.06, oil: 0.06, funding: 0.06, rates: 0.11, credit: 0.10,
@@ -43,4 +47,5 @@ export const CA_QT_END_DATE = '2025-03-05';
 export const VERDICT_BANDS = { bull: 55, bear: 45 } as const;
 export const STRESS = { vix: 25, tsxDd: -0.04, usdcad: 0.02, wti: -0.08 } as const; // 5-day thresholds
 export const INGEST_STALE_HOURS = 12;
-export const NETLIQ_TREND_WEEKS = 13;
+export const NETLIQ_TREND_WEEKS = 13;  // netliqTrend = settlement-balance Δ13w change z
+export const IMPULSE_DELTA_WEEKS = 4;  // impulse = total-assets Δ4w expansion/contraction z (matches qe_qt_regime 4w delta)

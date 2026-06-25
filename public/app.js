@@ -18,7 +18,7 @@ const EX_WINDOW_LABEL = { '1w': '上周', '1m': '上月', '3m': '3 个月前' };
 const FACTOR_MEANING = {
   netliqTrend:     '结算余额 13 周趋势，升=放水偏多',
   reserveAdequacy: 'BoC 结算余额充裕度（z-score）',
-  impulse:         'BoC 总资产脉冲（扩/缩）',
+  impulse:         'BoC 总资产 4 周扩缩脉冲（Δ4w，非水平）',
   curve:           '收益率曲线斜率（GoC10Y−2Y）',
   dollar:          'USD/CAD 汇率，走强（加元贬值）=逆风',
   oil:             'WTI 油价 z-score，升=加元顺风',
