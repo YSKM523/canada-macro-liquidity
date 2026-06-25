@@ -11,6 +11,8 @@ const FACTOR_LABELS = {
 };
 const VERDICT_CN = { BULLISH: '偏多', BEARISH: '偏空', NEUTRAL: '中性' };
 const VERDICT_CLASS = { BULLISH: 'bull', BEARISH: 'bear', NEUTRAL: 'neutral' };
+const WINDOW_LABEL = { full: '全历史', rolling3y: '滚动3年', postqt: 'Post-QT' };
+const VERDICT_COLOR = { BULLISH: '#2F855A', BEARISH: '#C53030', NEUTRAL: '#4A5568' };
 const REGIME_CN = { EXPANDING: '扩表', CONTRACTING: '缩表', FLAT: '横住' };
 const POLICY_CN = { QE: 'QE(宽松)', QT: 'QT(紧缩)', RESERVE_MGMT: '准备金管理(QT已结束)', NEUTRAL: '中性' };
 const fmt = (x, d = 2) => (x == null ? '—' : Number(x).toFixed(d));
@@ -109,6 +111,29 @@ function threeYearsAgo() {
   return d.toISOString().slice(0, 10);
 }
 
+function renderWindowScores(ws) {
+  const wrap = document.getElementById('window-scores');
+  const row = document.getElementById('window-scores-row');
+  if (!wrap || !row) return;
+  if (!ws) { wrap.style.display = 'none'; return; }
+  const order = ['full', 'rolling3y', 'postqt'];
+  row.innerHTML = order.map(k => {
+    const w = ws[k];
+    const label = WINDOW_LABEL[k] || k;
+    if (!w || w.score == null) {
+      return `<div style="flex:1;text-align:center;padding:0.4rem 0.3rem;background:rgba(255,255,255,.06);border-radius:4px;">
+        <div style="font-size:0.68rem;color:rgba(255,255,255,.6);">${label}</div>
+        <div style="font-size:0.78rem;color:rgba(255,255,255,.5);margin-top:0.2rem;">样本不足</div></div>`;
+    }
+    const color = VERDICT_COLOR[w.verdict] || '#4A5568';
+    return `<div style="flex:1;text-align:center;padding:0.4rem 0.3rem;background:rgba(255,255,255,.06);border-radius:4px;">
+      <div style="font-size:0.68rem;color:rgba(255,255,255,.6);">${label}</div>
+      <div style="font-size:1.05rem;font-weight:700;margin-top:0.15rem;">${fmt(w.score, 1)}</div>
+      <div style="display:inline-block;margin-top:0.2rem;font-size:0.66rem;color:#fff;background:${color};padding:0.05rem 0.4rem;border-radius:3px;">${VERDICT_CN[w.verdict] || '—'}</div></div>`;
+  }).join('');
+  wrap.style.display = '';
+}
+
 function renderVerdict(res) {
   const s = res.snapshot || {};
   const card = document.getElementById('verdict-card');
@@ -147,6 +172,8 @@ function renderVerdict(res) {
   const policy = s.policy_regime ? (POLICY_CN[s.policy_regime] || s.policy_regime) : '—';
   document.getElementById('regime-sub').innerHTML =
     `资产负债表:&nbsp;<b>${REGIME_CN[s.qe_qt_regime] || s.qe_qt_regime || '—'}</b><br>结算余额:&nbsp;<b>${dirCn(s.netliq_dir)}</b><br>政策阶段:&nbsp;<b>${policy}</b>`;
+
+  renderWindowScores(s.window_scores);
   const live = res.live || {};
   document.getElementById('asof').textContent =
     `TSX ${fmt(live.tsx, 0)} · VIX ${fmt(live.vix)} · USDCAD ${fmt(live.usdcad, 4)} · WTI ${fmt(live.wti)}`;

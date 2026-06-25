@@ -1,10 +1,10 @@
 import type { Env } from './service';
 import { runIngest } from './service';
-import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs, snapshotOnOrBefore, loadBacktestRows } from './db';
+import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs, snapshotOnOrBefore, loadBacktestRows, loadSeriesMap } from './db';
 import { factorContributions, attributeScoreChange, decomposeNetliq } from './explain';
 import { fetchLivePrices, fetchStressSeries, evaluateLiveStress } from './prices';
-import { policyRegime, displayVerdict, buildGuidance } from './metrics';
-import { COVERAGE_FACTORS, INGEST_STALE_HOURS, SERIES } from './config';
+import { policyRegime, displayVerdict, buildGuidance, computeWindowedScore } from './metrics';
+import { COVERAGE_FACTORS, INGEST_STALE_HOURS, SERIES, CA_QT_END_DATE } from './config';
 import { assessHealth } from './health';
 import { runRobustness } from './robustness';
 import { runBacktest } from './backtest';
@@ -49,7 +49,7 @@ export default {
       }
 
       if (p === '/api/snapshot') {
-        const [row, live, stress, meta, cadcny, us_rate, corra, target] = await Promise.all([
+        const [row, live, stress, meta, cadcny, us_rate, corra, target, seriesMap] = await Promise.all([
           latestSnapshot(env.DB),
           fetchLivePrices(new Date().toISOString()),
           fetchStressSeries().then(s => evaluateLiveStress(s)),
@@ -58,6 +58,7 @@ export default {
           latestObs(env.DB, SERIES.US_RATE.id),
           latestObs(env.DB, SERIES.CORRA.id),
           latestObs(env.DB, SERIES.TARGET.id),
+          loadSeriesMap(env.DB),
         ]);
         const ingest = {
           ingest_at: meta.last_ingest_at ?? null,
@@ -81,12 +82,22 @@ export default {
           stressed: stress.stressed,
           unknown: stress.unknown,
         });
+        // Windowed baseline scores: full (reuse stored, exact parity) + rolling 3y + post-QT.
+        const d3 = new Date(r.date + 'T00:00:00Z');
+        d3.setUTCFullYear(d3.getUTCFullYear() - 3);
+        const rolling3yFrom = d3.toISOString().slice(0, 10);
+        const window_scores = {
+          full: { score: r.score, verdict: r.verdict, from: null },
+          rolling3y: computeWindowedScore(seriesMap, r.date, rolling3yFrom),
+          postqt: computeWindowedScore(seriesMap, r.date, CA_QT_END_DATE),
+        };
         const snap = {
           ...r,
           policy_regime: policyRegime(r.qe_qt_regime, r.date),
           display_verdict,
           live_stress: stress,
           guidance,
+          window_scores,
           coverage_total: COVERAGE_FACTORS.length,
         };
         return json({ snapshot: snap, live, ingest, signals });

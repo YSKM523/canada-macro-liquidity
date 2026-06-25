@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { scoreDollar, scoreFunding, asOf, scoreNetliqTrend, scoreImpulse } from '../src/metrics';
+import { scoreDollar, scoreFunding, asOf, scoreNetliqTrend, scoreImpulse, scoreReserveAdequacy } from '../src/metrics';
+
+// weekly-dated obs from a start ISO date
+function weekly(startISO: string, vals: number[]) {
+  const out: { date: string; value: number }[] = [];
+  const d = new Date(startISO + 'T00:00:00Z');
+  for (const v of vals) {
+    out.push({ date: d.toISOString().slice(0, 10), value: v });
+    d.setUTCDate(d.getUTCDate() + 7);
+  }
+  return out;
+}
 
 const mk = (vals: number[]) => vals.map((v, i) => ({ date: `2026-01-${String(i + 1).padStart(2, '0')}`, value: v }));
 
@@ -65,5 +76,26 @@ describe('scoreImpulse measures Δ4w balance-sheet expansion, NOT level', () => 
   it('recent sharp expansion off a mid level → bullish (>50), even though level is below its history', () => {
     const v = [200,200,200,200, 100,100,100,100, 130]; // recent 4w change is the largest positive
     expect(scoreImpulse(mkN(v), last(v))).toBeGreaterThan(50);
+  });
+});
+
+describe('windowed baseline z-score (P1: de-contaminate 2020 QE blowout)', () => {
+  // 52w normal ~100, then a 2020-style blowout, then a gentle recent uptrend to ~120.
+  const recent = Array.from({ length: 100 }, (_, i) => 105 + i * 0.15); // 105 → ~119.85
+  const series = weekly('2019-01-02', [
+    ...Array(52).fill(100),
+    200, 350, 500, 500, 450, 400, 300, 200,   // 2020 blowout
+    ...recent,
+  ]);
+  const lastDate = series[series.length - 1].date;
+
+  it('full-history baseline is diluted by the blowout; a recent-window baseline reads the current value as more extreme', () => {
+    const full = scoreReserveAdequacy(series, lastDate);                 // all history (blowout inflates mean/sd)
+    const windowed = scoreReserveAdequacy(series, lastDate, '2024-01-01'); // window excludes the 2020 blowout
+    expect(windowed).toBeGreaterThan(full);
+  });
+
+  it('baselineFrom does not change the value being scored, only its baseline (no window = unchanged)', () => {
+    expect(scoreReserveAdequacy(series, lastDate, undefined)).toBe(scoreReserveAdequacy(series, lastDate));
   });
 });

@@ -14,45 +14,56 @@ function stats(vals: number[]) {
   return { m, sd };
 }
 
-function zScore(series: Obs[], date: string, sign: 1 | -1): number {
-  const vals = series.filter(o => o.date <= date).map(o => o.value);
-  if (vals.length === 0) return 50;
-  const { m, sd } = stats(vals);
-  const z = (vals[vals.length - 1] - m) / sd;
+// z-score of the latest value vs a baseline. `baselineFrom` (optional) restricts
+// the mean/sd baseline to obs on/after that date — the value being scored (latest
+// obs ≤ date) is unchanged. Used to compute regime-aware variants (rolling 3y /
+// post-QT) that aren't contaminated by the 2020 QE blowout in the full history.
+function zScore(series: Obs[], date: string, sign: 1 | -1, baselineFrom?: string): number {
+  const upTo = series.filter(o => o.date <= date);
+  if (upTo.length === 0) return 50;
+  const current = upTo[upTo.length - 1].value;
+  const base = (baselineFrom ? upTo.filter(o => o.date >= baselineFrom) : upTo).map(o => o.value);
+  if (base.length === 0) return 50;
+  const { m, sd } = stats(base);
+  const z = (current - m) / sd;
   return Math.max(0, Math.min(100, 50 + sign * z * 20));
 }
 
-export const scoreDollar = (usdcad: Obs[], d: string) => zScore(usdcad, d, -1);
-export const scoreOil = (wti: Obs[], d: string) => zScore(wti, d, 1);
-export const scoreRates = (goc10: Obs[], d: string) => zScore(goc10, d, -1);
-export const scoreCredit = (hy: Obs[], d: string) => zScore(hy, d, -1);
-export const scoreReserveAdequacy = (sb: Obs[], d: string) => zScore(sb, d, 1);
+export const scoreDollar = (usdcad: Obs[], d: string, baselineFrom?: string) => zScore(usdcad, d, -1, baselineFrom);
+export const scoreOil = (wti: Obs[], d: string, baselineFrom?: string) => zScore(wti, d, 1, baselineFrom);
+export const scoreRates = (goc10: Obs[], d: string, baselineFrom?: string) => zScore(goc10, d, -1, baselineFrom);
+export const scoreCredit = (hy: Obs[], d: string, baselineFrom?: string) => zScore(hy, d, -1, baselineFrom);
+export const scoreReserveAdequacy = (sb: Obs[], d: string, baselineFrom?: string) => zScore(sb, d, 1, baselineFrom);
 
 // Δ-over-N-weeks z-score: how unusual is the most recent N-week *change* vs the
 // history of N-week changes. Both flow factors use this (level z-scores are for
 // stock/spread factors like reserveAdequacy/curve/funding) so "trend" and
-// "impulse" are genuinely change signals, not levels.
-function changeZScore(series: Obs[], d: string, weeks: number): number {
-  const v = series.filter(o => o.date <= d).map(o => o.value);
-  if (v.length <= weeks) return 50;
-  const chg: number[] = [];
-  for (let i = weeks; i < v.length; i++) chg.push(v[i] - v[i - weeks]);
+// "impulse" are genuinely change signals, not levels. `baselineFrom` windows the
+// change distribution (a change is in-window iff its end-obs date ≥ baselineFrom).
+function changeZScore(series: Obs[], d: string, weeks: number, baselineFrom?: string): number {
+  const upTo = series.filter(o => o.date <= d);
+  if (upTo.length <= weeks) return 50;
+  const chg: { date: string; val: number }[] = [];
+  for (let i = weeks; i < upTo.length; i++) chg.push({ date: upTo[i].date, val: upTo[i].value - upTo[i - weeks].value });
   if (chg.length === 0) return 50;
-  const { m, sd } = stats(chg);
-  const z = (chg[chg.length - 1] - m) / sd;
+  const current = chg[chg.length - 1].val;
+  const base = (baselineFrom ? chg.filter(c => c.date >= baselineFrom) : chg).map(c => c.val);
+  if (base.length === 0) return 50;
+  const { m, sd } = stats(base);
+  const z = (current - m) / sd;
   return Math.max(0, Math.min(100, 50 + z * 20));
 }
 
 // netliqTrend = settlement-balance Δ13w change z (rising = liquidity easing = bullish)
-export function scoreNetliqTrend(sb: Obs[], d: string, weeks = NETLIQ_TREND_WEEKS): number {
-  return changeZScore(sb, d, weeks);
+export function scoreNetliqTrend(sb: Obs[], d: string, weeks = NETLIQ_TREND_WEEKS, baselineFrom?: string): number {
+  return changeZScore(sb, d, weeks, baselineFrom);
 }
 
 // impulse = total-assets Δ4w expansion/contraction z (QE/QT impulse, not the level).
 // Same 4-week delta the qe_qt_regime label uses — a high-but-flat balance sheet has
 // zero impulse, a fast-expanding one is bullish.
-export function scoreImpulse(assets: Obs[], d: string, weeks = IMPULSE_DELTA_WEEKS): number {
-  return changeZScore(assets, d, weeks);
+export function scoreImpulse(assets: Obs[], d: string, weeks = IMPULSE_DELTA_WEEKS, baselineFrom?: string): number {
+  return changeZScore(assets, d, weeks, baselineFrom);
 }
 
 export function scoreCurve(goc10: Obs[], goc2: Obs[], d: string): number {
@@ -237,6 +248,16 @@ export function policyRegime(impulse: Impulse, date: string): PolicyRegime {
 /** Keyed by config series id strings (e.g. 'V36636', 'BAMLH0A0HYM2', 'WTI') */
 export type SeriesMap = Record<string, Obs[]>;
 
+// A snapshot is "weekly" (canonical) iff its date coincides with a real BoC
+// total-assets (V36610) observation — a genuine weekly data point. Snapshots the
+// cron writes for intervening calendar days carry forward the last weekly reads
+// (only TSX moves) and are "daily". Only weekly snapshots feed the backtest:
+// mixing daily carry-forwards pollutes IC with autocorrelation + uneven spacing.
+export type SnapshotType = 'weekly' | 'daily';
+export function classifySnapshotType(date: string, canonicalDates: ReadonlySet<string>): SnapshotType {
+  return canonicalDates.has(date) ? 'weekly' : 'daily';
+}
+
 export interface Snapshot {
   // Date
   date: string;
@@ -267,6 +288,8 @@ export interface Snapshot {
   // Pillar flags (boolean; stored as INTEGER 0/1 in daily_snapshot)
   p0: boolean; p1: boolean; p2: boolean; p3: boolean;
   reason: string;
+  // 'weekly' = canonical BoC-date snapshot; 'daily' = carry-forward intraday (backtest uses weekly only)
+  snapshot_type: SnapshotType;
 }
 
 /** Epsilon for total-assets 4-week change to call EXPANDING vs CONTRACTING (in M CAD) */
@@ -401,6 +424,9 @@ export function computeSnapshot(m: SeriesMap, date: string, prev?: Verdict): Sna
   const p2 = factors.dollar >= 50;
   const p3 = factors.oil >= 50; // CA commodity/CAD pillar (US used vol; CA has no vol factor)
 
+  // Canonical weekly iff this date is a real BoC total-assets observation (not a carry-forward day)
+  const snapshot_type = classifySnapshotType(date, new Set(assetsSeries.map(o => o.date)));
+
   return {
     date,
     total_assets,
@@ -424,5 +450,56 @@ export function computeSnapshot(m: SeriesMap, date: string, prev?: Verdict): Sna
     coverage,
     p0, p1, p2, p3,
     reason,
+    snapshot_type,
   };
+}
+
+// ── Windowed baseline scores (rolling 3y / post-QT / full) ────────────────────
+// Recompute the composite under a regime-aware baseline so the 2020 QE blowout in
+// the full history doesn't contaminate the read for the current regime. Only the
+// 7 z/change factors re-window; curve & funding are level spreads (window-invariant).
+
+const MIN_WINDOW_OBS = 26;  // ≈6 months of weekly obs; below this a windowed z is too noisy → null
+
+export interface WindowedScore {
+  score: number;
+  verdict: Verdict;
+  from: string | null;  // baseline start date (null = full history)
+}
+
+/** Composite score under a baseline window. `baselineFrom` undefined = full history
+ *  (equals computeSnapshot().score). Returns null if the window is under-sampled. */
+export function computeWindowedScore(m: SeriesMap, date: string, baselineFrom?: string): WindowedScore | null {
+  const assetsSeries = series(m, SERIES.TOTAL_ASSETS.id);
+
+  if (baselineFrom) {
+    const n = assetsSeries.filter(o => o.date >= baselineFrom && o.date <= date).length;
+    if (n < MIN_WINDOW_OBS) return null;
+  }
+
+  const sb     = series(m, SERIES.SETTLEMENT.id);
+  const goc10  = series(m, SERIES.GOC10.id);
+  const goc2   = series(m, SERIES.GOC2.id);
+  const usdcad = series(m, SERIES.USDCAD.id);
+  const wti    = series(m, SERIES.WTI.id);
+  const corra  = series(m, SERIES.CORRA.id);
+  const target = series(m, SERIES.TARGET.id);
+  const hyOas  = series(m, SERIES.HY_OAS.id);
+
+  const factors: Record<typeof FACTOR_KEYS[number], number> = {
+    netliqTrend:     scoreNetliqTrend(sb, date, NETLIQ_TREND_WEEKS, baselineFrom),
+    reserveAdequacy: scoreReserveAdequacy(sb, date, baselineFrom),
+    impulse:         scoreImpulse(assetsSeries, date, IMPULSE_DELTA_WEEKS, baselineFrom),
+    curve:           scoreCurve(goc10, goc2, date),       // level spread — window-invariant
+    dollar:          scoreDollar(usdcad, date, baselineFrom),
+    oil:             scoreOil(wti, date, baselineFrom),
+    funding:         scoreFunding(corra, target, date),   // level spread — window-invariant
+    rates:           scoreRates(goc10, date, baselineFrom),
+    credit:          scoreCredit(hyOas, date, baselineFrom),
+  };
+
+  let score = 0;
+  for (const k of FACTOR_KEYS) score += factors[k] * WEIGHTS[k];
+  // Point-in-time comparison view — no hysteresis (verdict from score alone).
+  return { score, verdict: verdictFromScore(score), from: baselineFrom ?? null };
 }

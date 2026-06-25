@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSnapshot } from '../src/metrics';
+import { computeSnapshot, classifySnapshotType, computeWindowedScore } from '../src/metrics';
 import { SERIES, FACTOR_KEYS, WEIGHTS } from '../src/config';
 
 const mk = (vals: [string, number][]) => vals.map(([date, value]) => ({ date, value }));
@@ -49,6 +49,47 @@ describe('computeSnapshot — brief-specified tests', () => {
   it('coverage reflects fraction of factors with real data', () => {
     const s = computeSnapshot(minimalMap, '2026-06-17');
     expect(s.coverage).toBeCloseTo(3/9, 5);
+  });
+});
+
+describe('snapshot_type — canonical weekly vs carry-forward daily (P1: backtest must not mix frequencies)', () => {
+  it('classifySnapshotType: weekly iff the date is a real BoC observation', () => {
+    const canon = new Set(['2026-06-10', '2026-06-17']);
+    expect(classifySnapshotType('2026-06-17', canon)).toBe('weekly');
+    expect(classifySnapshotType('2026-06-15', canon)).toBe('daily'); // carry-forward intraday day
+  });
+
+  it('computeSnapshot on a real BoC date → snapshot_type=weekly', () => {
+    // minimalMap has V36610 obs on 2026-06-10 and 2026-06-17
+    expect(computeSnapshot(minimalMap, '2026-06-17').snapshot_type).toBe('weekly');
+  });
+
+  it('computeSnapshot on a non-BoC (carry-forward) date → snapshot_type=daily', () => {
+    expect(computeSnapshot(minimalMap, '2026-06-15').snapshot_type).toBe('daily');
+  });
+});
+
+describe('computeWindowedScore — three baseline windows (P1)', () => {
+  const DATE = '2026-07-22';
+
+  it('full window (no baselineFrom) parity: score equals computeSnapshot score', () => {
+    const full = computeWindowedScore(buildFullMap(), DATE);
+    const snap = computeSnapshot(buildFullMap(), DATE);
+    expect(full).not.toBeNull();
+    expect(full!.score).toBeCloseTo(snap.score, 5);
+    expect(['BULLISH', 'NEUTRAL', 'BEARISH']).toContain(full!.verdict);
+  });
+
+  it('under-sampled window (< 26 weekly obs) → null, never a noisy z', () => {
+    // buildFullMap is weekly from 2026-01-06; a window starting 2026-07-01 has only ~3 obs
+    expect(computeWindowedScore(buildFullMap(), DATE, '2026-07-01')).toBeNull();
+  });
+
+  it('windowed variant records its baseline start date', () => {
+    // full map only has ~30 weeks, so use a generous window that still clears the min-obs guard
+    const r = computeWindowedScore(buildFullMap(), DATE, '2026-01-06');
+    expect(r).not.toBeNull();
+    expect(r!.from).toBe('2026-01-06');
   });
 });
 

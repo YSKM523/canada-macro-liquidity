@@ -36,8 +36,8 @@ export async function upsertSnapshot(db: D1Database, snap: Snapshot, tsx: number
       (date, total_assets, goc_deposits, reverse_repo, notes_circ, settlement_bal,
        netliq, netliq_trend, corra_target, goc10, goc2, usdcad, wti, hy_oas, vix_eod,
        qe_qt_regime, netliq_dir, verdict, score, p0, p1, p2, p3, tsx,
-       reason, factors_json, coverage)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       reason, factors_json, coverage, snapshot_type)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(date) DO UPDATE SET
        total_assets=excluded.total_assets, goc_deposits=excluded.goc_deposits,
        reverse_repo=excluded.reverse_repo, notes_circ=excluded.notes_circ,
@@ -49,7 +49,8 @@ export async function upsertSnapshot(db: D1Database, snap: Snapshot, tsx: number
        verdict=excluded.verdict, score=excluded.score,
        p0=excluded.p0, p1=excluded.p1, p2=excluded.p2, p3=excluded.p3,
        tsx=excluded.tsx, reason=excluded.reason,
-       factors_json=excluded.factors_json, coverage=excluded.coverage`
+       factors_json=excluded.factors_json, coverage=excluded.coverage,
+       snapshot_type=excluded.snapshot_type`
   ).bind(
     snap.date,
     snap.total_assets,
@@ -77,7 +78,8 @@ export async function upsertSnapshot(db: D1Database, snap: Snapshot, tsx: number
     tsx,                           // tsx from function parameter (live price, not on Snapshot)
     snap.reason,
     JSON.stringify(snap.factors),  // factors_json
-    snap.coverage
+    snap.coverage,
+    snap.snapshot_type             // 'weekly' (canonical BoC date) | 'daily' (carry-forward)
   ).run();
 }
 
@@ -102,10 +104,16 @@ export async function countSnapshots(db: D1Database): Promise<number> {
   return row?.n ?? 0;
 }
 
-export async function loadBacktestRows(db: D1Database): Promise<any[]> {
-  const rs = await db.prepare(
-    'SELECT date, score, tsx, verdict, factors_json, qe_qt_regime FROM daily_snapshot WHERE tsx IS NOT NULL ORDER BY date'
-  ).all();
+// Backtest/robustness default to canonical WEEKLY snapshots only — mixing the
+// carry-forward daily rows the cron writes pollutes IC (autocorrelation + uneven
+// spacing). Pass weeklyOnly=false to include daily rows (diagnostics only).
+export async function loadBacktestRows(db: D1Database, weeklyOnly = true): Promise<any[]> {
+  const sql =
+    'SELECT date, score, tsx, verdict, factors_json, qe_qt_regime, snapshot_type ' +
+    'FROM daily_snapshot WHERE tsx IS NOT NULL' +
+    (weeklyOnly ? " AND snapshot_type = 'weekly'" : '') +
+    ' ORDER BY date';
+  const rs = await db.prepare(sql).all();
   return rs.results ?? [];
 }
 
