@@ -60,6 +60,37 @@ describe('evaluateLiveStress', () => {
   });
 });
 
+describe('evaluateLiveStress — missing data is UNKNOWN, not "no risk"', () => {
+  const calm = { tsx: [100,100,100,100,100,100], vix: [15], usdcad: [1.40,1.40,1.40,1.40,1.40,1.40], wti: [70,70,70,70,70,70] };
+
+  it('all sources present, calm tape → known + not unknown', () => {
+    const s = evaluateLiveStress(calm, T);
+    expect(s.missing).toBe(0);
+    expect(s.unknown).toBe(false);
+    expect(s.stressed).toBe(false);
+  });
+
+  it('one source missing → still known (missing 1, not unknown)', () => {
+    const s = evaluateLiveStress({ ...calm, vix: [] }, T);
+    expect(s.missing).toBe(1);
+    expect(s.unknown).toBe(false);
+  });
+
+  it('P0: two sources missing → UNKNOWN, must not read as calm/no-risk', () => {
+    const s = evaluateLiveStress({ ...calm, vix: [], wti: [] }, T);
+    expect(s.missing).toBe(2);
+    expect(s.unknown).toBe(true);
+  });
+
+  it('all sources missing → UNKNOWN, stressed stays false (no fabricated breach)', () => {
+    const s = evaluateLiveStress({ tsx: [], vix: [], usdcad: [], wti: [] }, T);
+    expect(s.missing).toBe(4);
+    expect(s.unknown).toBe(true);
+    expect(s.stressed).toBe(false);
+    expect(s.reasons).toEqual([]);
+  });
+});
+
 describe('parseYahooQuote', () => {
   it('extracts regularMarketPrice', () => {
     expect(parseYahooQuote({ chart: { result: [{ meta: { regularMarketPrice: 21000 } }] } })).toBe(21000);

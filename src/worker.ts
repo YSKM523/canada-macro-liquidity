@@ -72,13 +72,14 @@ export default {
         const signals = { cadcny, us_rate, corra, target };
         if (!row) return json({ snapshot: null, live, ingest, signals, error: 'no_data' });
         const r: any = row;
-        const display_verdict = displayVerdict(r.verdict, stress.stressed);
+        const display_verdict = displayVerdict(r.verdict, stress.stressed, stress.unknown);
         const guidance = buildGuidance({
           score: r.score,
           verdict: r.verdict,
           netliqDir: r.netliq_dir,
           qeQtRegime: r.qe_qt_regime,
           stressed: stress.stressed,
+          unknown: stress.unknown,
         });
         const snap = {
           ...r,

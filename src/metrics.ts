@@ -69,14 +69,19 @@ export function downgradeVerdict(v: Verdict): Verdict {
   return v === 'BULLISH' ? 'NEUTRAL' : v === 'NEUTRAL' ? 'BEARISH' : 'BEARISH';
 }
 
-// Headline verdict the UI actually shows. When a live stress event is active the
-// macro verdict is downgraded one notch (BULLISH→NEUTRAL→BEARISH) regardless of
-// the macro score — a high score is exactly when a sudden risk spike is most
-// dangerous to flash green. Keeps the headline consistent with buildGuidance's
-// stress-first RISK-OFF tone. No score gate (the old STRESS_SCORE_CEILING bug
-// let a high-score BULLISH survive a live stress event).
-export function displayVerdict(v: Verdict, stressed: boolean): Verdict {
-  return stressed ? downgradeVerdict(v) : v;
+// Headline verdict the UI actually shows.
+//   stressed → a real live breach was detected: downgrade one notch
+//     (BULLISH→NEUTRAL→BEARISH) regardless of macro score — a high score is exactly
+//     when a sudden risk spike is most dangerous to flash green.
+//   unknown  → too many live sources are missing to assess risk: cap the upside so
+//     we never flash pure BULLISH while blind, but do NOT claim risk (no push past
+//     NEUTRAL — missing data means "we can't tell", not "it's bad").
+// No score gate (the old STRESS_SCORE_CEILING bug let a high-score BULLISH survive
+// a live stress event). Kept consistent with buildGuidance's stress-first tone.
+export function displayVerdict(v: Verdict, stressed: boolean, unknown = false): Verdict {
+  if (stressed) return downgradeVerdict(v);
+  if (unknown) return v === 'BULLISH' ? 'NEUTRAL' : v;
+  return v;
 }
 
 export type Impulse = 'EXPANDING' | 'CONTRACTING' | 'FLAT';
@@ -99,6 +104,7 @@ export interface GuidanceInput {
   netliqDir: string;      // 'UP' | 'DOWN' | 'FLAT'
   qeQtRegime: string;     // 'EXPANDING' | 'CONTRACTING' | 'FLAT'
   stressed: boolean;      // live_stress.stressed
+  unknown?: boolean;      // live_stress.unknown — >=2 realtime sources missing
 }
 
 export interface GuidanceTrigger {
@@ -117,9 +123,9 @@ export interface Guidance {
 }
 
 export function buildGuidance(input: GuidanceInput): Guidance {
-  const { score, netliqDir, qeQtRegime, stressed } = input;
+  const { score, netliqDir, qeQtRegime, stressed, unknown } = input;
 
-  // Tier logic (ordered: stress first, then score bands)
+  // Tier logic (ordered: real breach first, then data-gap, then score bands)
   let tone: Guidance['tone'];
   let tierLabel: string;
   let exposure: string;
@@ -130,6 +136,12 @@ export function buildGuidance(input: GuidanceInput): Guidance {
     tierLabel = 'RISK-OFF · 刹车';
     exposure = '立刻停止加仓、收到基准以下';
     lean = '现金/防御,等实时风险解除';
+  } else if (unknown) {
+    // Blind on realtime risk: don't claim risk, but don't flash green either.
+    tone = 'neutral';
+    tierLabel = '实时风险数据缺失 · 暂不可评估';
+    exposure = '维持基准或略低,数据恢复前别加码';
+    lean = '保守;实时风险源缺失,无法确认是否安全';
   } else if (score >= 55) {
     if (netliqDir === 'DOWN') {
       tone = 'neutral';
@@ -189,7 +201,7 @@ export function buildGuidance(input: GuidanceInput): Guidance {
 
   const trigger1: GuidanceTrigger = {
     label: '实时风险(stress)触发 → 立刻刹车',
-    detail: stressed ? '已触发' : '当前未触发',
+    detail: stressed ? '已触发' : unknown ? '实时数据缺失,无法判定' : '当前未触发',
     armed: stressed,
   };
 

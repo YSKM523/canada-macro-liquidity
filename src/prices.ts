@@ -17,6 +17,8 @@ export interface StressSeries {
 
 export interface LiveStress {
   stressed: boolean;
+  unknown: boolean;   // >=2 live sources missing → cannot assess realtime risk (≠ "no risk")
+  missing: number;    // count of missing live sources (0–4)
   reasons: string[];
   signals: {
     vix: number | null;
@@ -124,8 +126,15 @@ export function evaluateLiveStress(s: StressSeries, t: StressThresholds = STRESS
   if (wti5d != null && wti5d < t.wti)
     reasons.push(`WTI 5日 ${(wti5d * 100).toFixed(1)}%（油价暴跌，加元逆风）`);
 
+  // A live source is "missing" when its computed signal is null (empty Yahoo series).
+  // >=2 missing → we are blind enough that "no breach detected" must NOT be read as
+  // "no risk"; the UNKNOWN flag forces the headline to stop showing pure BULLISH.
+  const missing = [vix, tsx5d, usdcad5d, wti5d].filter(x => x == null).length;
+
   return {
     stressed: reasons.length > 0,
+    unknown: missing >= 2,
+    missing,
     reasons,
     signals: { vix, tsx5d, usdcad5d, wti5d },
   };

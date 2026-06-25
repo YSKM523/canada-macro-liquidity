@@ -118,7 +118,7 @@ function renderVerdict(res) {
   document.getElementById('verdict-label').textContent = VERDICT_CN[displayV] || '—';
   document.getElementById('verdict-reason').textContent = s.reason || '';
 
-  // Live stress overlay
+  // Live stress overlay — three states: real breach, data-gap (UNKNOWN), or clear.
   const stress = s.live_stress;
   const banner = document.getElementById('stress-banner');
   const note = document.getElementById('stress-note');
@@ -127,6 +127,15 @@ function renderVerdict(res) {
     banner.style.display = '';
     if (displayV !== macroV) {
       note.textContent = `(宏观判断 ${VERDICT_CN[macroV]}，因实时风险下调一级)`;
+      note.style.display = '';
+    } else {
+      note.style.display = 'none';
+    }
+  } else if (stress && stress.unknown) {
+    banner.textContent = `⚠️ 实时风险数据缺失（${stress.missing} 个实时源无数据）— 无法评估实时风险`;
+    banner.style.display = '';
+    if (displayV !== macroV) {
+      note.textContent = `(宏观判断 ${VERDICT_CN[macroV]}，因实时数据缺失无法确认安全，已封顶为中性)`;
       note.style.display = '';
     } else {
       note.style.display = 'none';
