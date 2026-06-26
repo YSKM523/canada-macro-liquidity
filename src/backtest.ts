@@ -1,3 +1,5 @@
+import { verdictFromScore, displayVerdict, reconstructStress, type Verdict } from './metrics';
+
 export interface BtSnap {
   date: string;
   score: number;
@@ -5,13 +7,18 @@ export interface BtSnap {
   factors: Record<string, number>;
   regime?: string;
   vix?: number;
+  // P1: stored prices for historical stress reconstruction + the real display decision
+  usdcad?: number | null;
+  wti?: number | null;
+  display_verdict?: Verdict;        // 'live'/reconstructed decision stored at ingest (preferred when present)
 }
 
 export interface BacktestResult {
   window: { from: string; to: string; n_snapshots: number; years: number };
   horizons: Record<string, { n: number; ic_spearman: number; ic_pearson: number; hit_rate: number }>;
   factor_ic_spearman: Record<string, Record<string, number>>;
-  strategy_long_flat: { ann_return: number; buyhold_ann: number; sharpe: number; n_periods: number };
+  strategy_long_flat: { ann_return: number; buyhold_ann: number; sharpe: number; n_periods: number; flat_weeks_stress?: number };
+  decision?: 'macro' | 'display';   // present only for decision=display (macro keeps legacy shape)
   caveats: string[];
 }
 
@@ -114,11 +121,42 @@ export function forwardReturns(
 const DEFAULT_HORIZONS = [4, 8, 13];
 const DEFAULT_FACTOR_KEYS = ['netliqTrend', 'reserveAdequacy', 'impulse', 'curve', 'dollar', 'oil', 'funding', 'rates', 'credit'];
 
+/**
+ * Position the long-flat strategy takes at snapshot i.
+ *   macro   → long iff macro score is bullish (score > 55), the legacy rule.
+ *   display → long iff the decision the USER SEES is BULLISH: prefer a stored
+ *             display_verdict (the real live/reconstructed decision persisted at
+ *             ingest); else reconstruct stress from the prior week's prices and
+ *             apply the same stress downgrade the UI applies.
+ */
+function decisionPosition(snaps: BtSnap[], i: number, decision: 'macro' | 'display'): 0 | 1 {
+  if (decision === 'macro') return snaps[i].score > 55 ? 1 : 0;
+  let dv: Verdict;
+  if (snaps[i].display_verdict) {
+    dv = snaps[i].display_verdict!;
+  } else {
+    const macroV = verdictFromScore(snaps[i].score);
+    if (i > 0) {
+      const prev = snaps[i - 1], cur = snaps[i];
+      const { stressed, unknown } = reconstructStress(
+        { tsx: prev.spx, usdcad: prev.usdcad ?? null, wti: prev.wti ?? null },
+        { tsx: cur.spx,  usdcad: cur.usdcad ?? null,  wti: cur.wti ?? null },
+      );
+      dv = displayVerdict(macroV, stressed, unknown);
+    } else {
+      dv = macroV;  // no prior week → cannot reconstruct stress → no downgrade
+    }
+  }
+  return dv === 'BULLISH' ? 1 : 0;
+}
+
 export function runBacktest(
   snaps: BtSnap[],
   horizons = DEFAULT_HORIZONS,
   factorKeys = DEFAULT_FACTOR_KEYS,
+  opts: { decision?: 'macro' | 'display' } = {},
 ): BacktestResult {
+  const decision = opts.decision ?? 'macro';
   // ---- window ----
   const n_snapshots = snaps.length;
   const from = snaps[0]?.date ?? '';
@@ -157,12 +195,17 @@ export function runBacktest(
   // ---- strategy_long_flat ----
   const strat = (() => {
     if (snaps.length < 2) {
-      return { ann_return: 0, buyhold_ann: 0, sharpe: 0, n_periods: 0 };
+      return decision === 'display'
+        ? { ann_return: 0, buyhold_ann: 0, sharpe: 0, n_periods: 0, flat_weeks_stress: 0 }
+        : { ann_return: 0, buyhold_ann: 0, sharpe: 0, n_periods: 0 };
     }
     const n_periods = snaps.length - 1;
     const stratRets: number[] = [];
+    let flat_weeks_stress = 0;
     for (let i = 0; i < n_periods; i++) {
-      const position = snaps[i].score > 55 ? 1 : 0;
+      const position = decisionPosition(snaps, i, decision);
+      // a week the macro score wanted long (>55) but the seen decision sat out
+      if (decision === 'display' && snaps[i].score > 55 && position === 0) flat_weeks_stress++;
       const period_ret = fin(snaps[i + 1].spx / snaps[i].spx - 1);
       stratRets.push(position * period_ret);
     }
@@ -177,7 +220,9 @@ export function runBacktest(
     const s = std(stratRets);
     const sharpe = fin(s > 0 ? (mean(stratRets) / s) * Math.sqrt(ppy) : 0);
 
-    return { ann_return, buyhold_ann, sharpe, n_periods };
+    return decision === 'display'
+      ? { ann_return, buyhold_ann, sharpe, n_periods, flat_weeks_stress }
+      : { ann_return, buyhold_ann, sharpe, n_periods };
   })();
 
   return {
@@ -185,6 +230,7 @@ export function runBacktest(
     horizons: horizonResult,
     factor_ic_spearman: factorIcResult,
     strategy_long_flat: strat,
+    ...(decision === 'display' ? { decision } : {}),
     caveats: [
       'history 2016+ — directional evidence not proof',
       'overlapping forward windows overstate significance — n reported',

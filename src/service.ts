@@ -2,8 +2,9 @@ import { fetchBocSeries } from './boc';
 import { fetchFredSeries, fetchYahooDaily } from './extsrc';
 import { SERIES_IDS_BOC, SERIES_IDS_FRED, YAHOO_SYMBOLS, SERIES } from './config';
 import { maxObsDate, upsertObservations, loadSeriesMap, upsertSnapshot, setMeta, countSnapshots } from './db';
-import { computeSnapshot, asOf } from './metrics';
-import type { Verdict } from './metrics';
+import { computeSnapshot, asOf, reconstructStress, displayVerdict } from './metrics';
+import type { Verdict, PriceRead } from './metrics';
+import { fetchStressSeries, evaluateLiveStress } from './prices';
 
 export interface Env {
   DB: D1Database;
@@ -100,12 +101,30 @@ export async function runIngest(env: Env, rebuildAll = false): Promise<{ updated
         ? totalAssetsSeries.map(o => o.date)
         : eachDay(addDays(lastDate, -14), lastDate);
 
+      // Live realtime stress (now) — applied only to the latest snapshot, stored as
+      // the real decision the user saw. All earlier dates reconstruct from prices.
+      let liveStress: { stressed: boolean; unknown: boolean } | null = null;
+      try { liveStress = evaluateLiveStress(await fetchStressSeries()); } catch { liveStress = null; }
+
       let prev: Verdict | undefined;
+      let prevPrices: PriceRead | null = null;
       for (const date of dates) {
         if (asOf(totalAssetsSeries, date) == null) continue;
         const snap = computeSnapshot(m, date, prev);
-        await upsertSnapshot(env.DB, snap, asOf(tsxSeries, date));
+        const tsx = asOf(tsxSeries, date);
+        const curPrices: PriceRead = { tsx, usdcad: snap.usdcad, wti: snap.wti };
+
+        // display_verdict: live for the most recent date, else reconstructed week-over-week
+        const isLatest = date === lastDate;
+        const stress = (isLatest && liveStress)
+          ? liveStress
+          : (prevPrices ? reconstructStress(prevPrices, curPrices) : { stressed: false, unknown: false });
+        const dVerdict = displayVerdict(snap.verdict, stress.stressed, stress.unknown);
+        const source = (isLatest && liveStress) ? 'live' : 'reconstructed';
+
+        await upsertSnapshot(env.DB, snap, tsx, dVerdict, source);
         prev = snap.verdict;
+        prevPrices = curPrices;
         snapshots++;
       }
     }

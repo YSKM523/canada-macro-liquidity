@@ -193,6 +193,8 @@ export default {
       }
 
       if (p === '/api/backtest') {
+        const dparam = url.searchParams.get('decision');
+        const decision = dparam === 'display' ? 'display' : 'macro';
         const rows = await loadBacktestRows(env.DB);
         const snaps = rows
           .filter((r: any) => r.tsx != null && r.score != null && r.factors_json)
@@ -203,8 +205,11 @@ export default {
             factors: JSON.parse(r.factors_json),
             regime: r.qe_qt_regime as string | undefined,
             vix: r.vix_eod as number | null ?? undefined,
+            usdcad: r.usdcad as number | null,        // P1: for stress reconstruction
+            wti: r.wti as number | null,
+            display_verdict: (r.display_verdict ?? undefined) as any,
           }));
-        return json(runBacktest(snaps));
+        return json(runBacktest(snaps, undefined, undefined, { decision }));
       }
 
       if (p === '/api/walkforward') {

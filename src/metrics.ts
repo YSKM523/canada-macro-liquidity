@@ -1,4 +1,4 @@
-import { VERDICT_BANDS, CA_QT_END_DATE, SERIES, WEIGHTS, FACTOR_KEYS, COVERAGE_FACTORS, NETLIQ_TREND_WEEKS, IMPULSE_DELTA_WEEKS } from './config';
+import { VERDICT_BANDS, CA_QT_END_DATE, SERIES, WEIGHTS, FACTOR_KEYS, COVERAGE_FACTORS, NETLIQ_TREND_WEEKS, IMPULSE_DELTA_WEEKS, STRESS } from './config';
 
 export interface Obs { date: string; value: number }
 
@@ -107,6 +107,37 @@ export function displayVerdict(v: Verdict, stressed: boolean, unknown = false): 
   if (stressed) return downgradeVerdict(v);
   if (unknown) return v === 'BULLISH' ? 'NEUTRAL' : v;
   return v;
+}
+
+// ── Historical stress reconstruction (P1: backtest the display_verdict) ───────
+// The live-stress overlay (displayVerdict) was never stored historically, and CA has
+// no VIX. To backtest the decision the user actually sees, reconstruct stress from the
+// week-over-week change of the stored tsx/usdcad/wti prices, using the same STRESS
+// thresholds. The weekly change is a proxy for the live 5-trading-day momentum.
+export interface PriceRead { tsx: number | null; usdcad: number | null; wti: number | null }
+
+export function reconstructStress(
+  prev: PriceRead,
+  cur: PriceRead,
+  t: { vix: number; tsxDd: number; usdcad: number; wti: number } = STRESS,
+): { stressed: boolean; unknown: boolean } {
+  // % change, or null when either endpoint is missing/zero (cannot evaluate)
+  const chg = (a: number | null, b: number | null): number | null =>
+    (a != null && b != null && a !== 0) ? b / a - 1 : null;
+
+  const tsx5d    = chg(prev.tsx, cur.tsx);
+  const usdcad5d = chg(prev.usdcad, cur.usdcad);
+  const wti5d    = chg(prev.wti, cur.wti);
+
+  const breach =
+    (tsx5d != null && tsx5d < t.tsxDd) ||
+    (usdcad5d != null && usdcad5d > t.usdcad) ||
+    (wti5d != null && wti5d < t.wti);
+
+  // VIX is always absent in CA → counts as missing, mirroring evaluateLiveStress.
+  const missing = [null /* vix */, tsx5d, usdcad5d, wti5d].filter(x => x == null).length;
+
+  return { stressed: breach, unknown: missing >= 2 };
 }
 
 export type Impulse = 'EXPANDING' | 'CONTRACTING' | 'FLAT';

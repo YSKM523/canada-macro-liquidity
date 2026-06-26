@@ -15,6 +15,7 @@ import { fetchFredSeries, fetchYahooDaily } from '../src/extsrc';
 import { computeSnapshot, asOf } from '../src/metrics';
 import { runBacktest } from '../src/backtest';
 import { runRobustness } from '../src/robustness';
+import { assertCreditHistory } from '../src/calibration-guards';
 import {
   SERIES_IDS_BOC,
   SERIES_IDS_FRED,
@@ -60,6 +61,9 @@ async function main() {
   for (const [k, v] of Object.entries(m)) {
     process.stderr.write(`  ${k}: ${v.length} obs\n`);
   }
+
+  // P2: fail loudly if the credit (HY OAS) history doesn't cover the backtest window.
+  assertCreditHistory(m[SERIES.HY_OAS.id] ?? [], START);
 
   // ── 3. Iterate weekly dates from BoC total-assets schedule ──────────────────
   const totalAssetsSeries = m[SERIES.TOTAL_ASSETS.id];

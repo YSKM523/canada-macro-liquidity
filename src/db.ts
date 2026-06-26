@@ -30,14 +30,20 @@ export async function loadSeriesMap(db: D1Database, from = '1900-01-01'): Promis
   return m;
 }
 
-export async function upsertSnapshot(db: D1Database, snap: Snapshot, tsx: number | null): Promise<void> {
+export async function upsertSnapshot(
+  db: D1Database,
+  snap: Snapshot,
+  tsx: number | null,
+  displayVerdict: string | null = null,
+  stressSource: string | null = null,   // 'live' | 'reconstructed'
+): Promise<void> {
   await db.prepare(
     `INSERT INTO daily_snapshot
       (date, total_assets, goc_deposits, reverse_repo, notes_circ, settlement_bal,
        netliq, netliq_trend, corra_target, goc10, goc2, usdcad, wti, hy_oas, vix_eod,
        qe_qt_regime, netliq_dir, verdict, score, p0, p1, p2, p3, tsx,
-       reason, factors_json, coverage, snapshot_type)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       reason, factors_json, coverage, snapshot_type, display_verdict, stress_source)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(date) DO UPDATE SET
        total_assets=excluded.total_assets, goc_deposits=excluded.goc_deposits,
        reverse_repo=excluded.reverse_repo, notes_circ=excluded.notes_circ,
@@ -50,7 +56,12 @@ export async function upsertSnapshot(db: D1Database, snap: Snapshot, tsx: number
        p0=excluded.p0, p1=excluded.p1, p2=excluded.p2, p3=excluded.p3,
        tsx=excluded.tsx, reason=excluded.reason,
        factors_json=excluded.factors_json, coverage=excluded.coverage,
-       snapshot_type=excluded.snapshot_type`
+       snapshot_type=excluded.snapshot_type,
+       -- never downgrade an already-captured live decision back to reconstructed
+       display_verdict=CASE WHEN daily_snapshot.stress_source='live'
+                            THEN daily_snapshot.display_verdict ELSE excluded.display_verdict END,
+       stress_source=CASE WHEN daily_snapshot.stress_source='live'
+                          THEN daily_snapshot.stress_source ELSE excluded.stress_source END`
   ).bind(
     snap.date,
     snap.total_assets,
@@ -79,7 +90,9 @@ export async function upsertSnapshot(db: D1Database, snap: Snapshot, tsx: number
     snap.reason,
     JSON.stringify(snap.factors),  // factors_json
     snap.coverage,
-    snap.snapshot_type             // 'weekly' (canonical BoC date) | 'daily' (carry-forward)
+    snap.snapshot_type,            // 'weekly' (canonical BoC date) | 'daily' (carry-forward)
+    displayVerdict,
+    stressSource,
   ).run();
 }
 
@@ -109,7 +122,8 @@ export async function countSnapshots(db: D1Database): Promise<number> {
 // spacing). Pass weeklyOnly=false to include daily rows (diagnostics only).
 export async function loadBacktestRows(db: D1Database, weeklyOnly = true): Promise<any[]> {
   const sql =
-    'SELECT date, score, tsx, verdict, factors_json, qe_qt_regime, snapshot_type ' +
+    'SELECT date, score, tsx, verdict, factors_json, qe_qt_regime, snapshot_type, ' +
+    'usdcad, wti, display_verdict ' +   // P1: display-decision backtest inputs
     'FROM daily_snapshot WHERE tsx IS NOT NULL' +
     (weeklyOnly ? " AND snapshot_type = 'weekly'" : '') +
     ' ORDER BY date';
