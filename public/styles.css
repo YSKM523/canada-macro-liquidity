@@ -37,7 +37,12 @@ body{margin:0;background:var(--surface);color:var(--ink);
 .grid .card{margin-bottom:0}
 .gauge{height:10px;background:var(--surface);border:1px solid var(--line);border-radius:999px;overflow:hidden}
 .gauge-fill{height:100%;width:0;background:var(--accent)}
-.score-num{font-size:40px;font-weight:700;margin:12px 0 16px}
+.score-num{font-size:40px;font-weight:700;margin:12px 0 4px}
+.score-confidence{font-size:13px;color:var(--muted);margin:0 0 16px;font-variant-numeric:tabular-nums;cursor:help}
+.score-confidence b{color:var(--ink);font-weight:600}
+.score-confidence.low{color:var(--amber-deep)}
+.score-confidence.low b{color:var(--amber-deep)}
+.score-confidence .conf-warn{color:var(--amber-deep);font-weight:600;margin-left:4px}
 .factor-bars{display:flex;flex-direction:column;gap:8px}
 .fb{display:grid;grid-template-columns:96px 1fr 32px;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
 .fb .track{height:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;overflow:hidden}

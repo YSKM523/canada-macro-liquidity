@@ -3,7 +3,7 @@ import { runIngest } from './service';
 import { latestSnapshot, getAllMeta, countSnapshots, snapshotHistory, latestObs, snapshotOnOrBefore, loadBacktestRows, loadSeriesMap } from './db';
 import { factorContributions, attributeScoreChange, decomposeNetliq } from './explain';
 import { fetchLivePrices, fetchStressSeries, evaluateLiveStress } from './prices';
-import { policyRegime, displayVerdict, buildGuidance, computeWindowedScore } from './metrics';
+import { policyRegime, displayVerdict, buildGuidance, computeWindowedScore, computeConfidence } from './metrics';
 import { COVERAGE_FACTORS, INGEST_STALE_HOURS, SERIES, CA_QT_END_DATE } from './config';
 import { assessHealth } from './health';
 import { runRobustness } from './robustness';
@@ -91,6 +91,9 @@ export default {
           rolling3y: computeWindowedScore(seriesMap, r.date, rolling3yFrom),
           postqt: computeWindowedScore(seriesMap, r.date, CA_QT_END_DATE),
         };
+        // Coverage-adjusted confidence: weighted fraction of the composite backed by
+        // real data (vs missing factors filled with neutral 50). Shown next to score.
+        const conf = computeConfidence(seriesMap, r.date);
         const snap = {
           ...r,
           policy_regime: policyRegime(r.qe_qt_regime, r.date),
@@ -98,6 +101,8 @@ export default {
           live_stress: stress,
           guidance,
           window_scores,
+          confidence: conf.confidence,
+          confidence_missing: conf.missing,
           coverage_total: COVERAGE_FACTORS.length,
         };
         return json({ snapshot: snap, live, ingest, signals });

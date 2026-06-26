@@ -305,6 +305,47 @@ function hasCoverage(obs: Obs[], d: string): boolean {
   return obs.some(o => o.date <= d);
 }
 
+/**
+ * Factor → the raw series it depends on. A factor is "covered" iff ALL its required
+ * series have data ≤ the snapshot date. Single source of truth shared by the
+ * unweighted `coverage` count (computeSnapshot) and the weighted `confidence`
+ * (computeConfidence) so the two readings can never drift.
+ */
+function factorSeriesArrays(m: SeriesMap): Record<typeof FACTOR_KEYS[number], Obs[][]> {
+  return {
+    netliqTrend:     [series(m, SERIES.SETTLEMENT.id)],
+    reserveAdequacy: [series(m, SERIES.SETTLEMENT.id)],
+    impulse:         [series(m, SERIES.TOTAL_ASSETS.id)],
+    curve:           [series(m, SERIES.GOC10.id), series(m, SERIES.GOC2.id)],
+    dollar:          [series(m, SERIES.USDCAD.id)],
+    oil:             [series(m, SERIES.WTI.id)],
+    funding:         [series(m, SERIES.CORRA.id), series(m, SERIES.TARGET.id)],
+    rates:           [series(m, SERIES.GOC10.id)],
+    credit:          [series(m, SERIES.HY_OAS.id)],
+  };
+}
+
+export interface Confidence {
+  confidence: number;    // 0–1; Σ weights of factors with real data ≤ date
+  missing: string[];     // factor keys lacking data (FACTOR_KEYS order)
+}
+
+/**
+ * Weighted factor coverage: how much of the weighted composite score is backed by
+ * REAL data vs filled with neutral 50. Weights sum to 1.00, so confidence ∈ [0, 1].
+ * A near-50 score at low confidence means "we can't tell", not "calm neutral".
+ */
+export function computeConfidence(m: SeriesMap, date: string): Confidence {
+  const fsa = factorSeriesArrays(m);
+  let confidence = 0;
+  const missing: string[] = [];
+  for (const key of COVERAGE_FACTORS) {
+    if (fsa[key].every(s => hasCoverage(s, date))) confidence += WEIGHTS[key];
+    else missing.push(key);
+  }
+  return { confidence, missing };
+}
+
 /** Total-assets 4wk direction */
 function assetsDirection(obs: Obs[], date: string, epsilonWeeks = 4): Impulse {
   const filtered = obs.filter(o => o.date <= date);
@@ -381,24 +422,13 @@ export function computeSnapshot(m: SeriesMap, date: string, prev?: Verdict): Sna
   };
 
   // ── coverage (honest: missing series score 50 but decrement coverage) ────────
-  // Map each factor key to the series it relies on
-  const factorSeriesMap: Record<typeof FACTOR_KEYS[number], Obs[][]> = {
-    netliqTrend:     [sbSeries],
-    reserveAdequacy: [sbSeries],
-    impulse:         [assetsSeries],
-    curve:           [goc10Series, goc2Series],
-    dollar:          [usdcadSeries],
-    oil:             [wtiSeries],
-    funding:         [corraSeries, targetSeries],
-    rates:           [goc10Series],
-    credit:          [hyOasSeries],
-  };
-
+  // Shared factor→series map (factorSeriesArrays) keeps this unweighted count and
+  // the weighted confidence (computeConfidence) in lock-step.
+  const factorSeriesMap = factorSeriesArrays(m);
   let covered = 0;
   for (const key of COVERAGE_FACTORS) {
-    const seriesArr = factorSeriesMap[key];
     // A factor is "covered" if ALL its required series have ≥1 obs ≤ date
-    if (seriesArr.every(s => hasCoverage(s, date))) covered++;
+    if (factorSeriesMap[key].every(s => hasCoverage(s, date))) covered++;
   }
   const coverage = covered / COVERAGE_FACTORS.length;
 

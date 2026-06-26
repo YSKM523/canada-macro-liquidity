@@ -281,6 +281,7 @@ function renderScore(s) {
   const score = Math.round(s.score ?? 0);
   document.getElementById('score-gauge').style.width = score + '%';
   document.getElementById('score-num').textContent = score;
+  renderConfidence(s);
   // sub-factor bars read the persisted factors_json column (set by upsertSnapshot)
   const factors = s.factors_json ? JSON.parse(s.factors_json) : null;
   const host = document.getElementById('factor-bars');
@@ -293,6 +294,25 @@ function renderScore(s) {
     row.innerHTML = `<span>${label}</span><span class="track"><span class="bar ${st}" style="width:${val}%"></span></span><span class="fbv ${st}">${val}</span>`;
     host.appendChild(row);
   }
+}
+
+// Coverage-adjusted confidence: how much of the weighted composite is backed by real
+// data. Low confidence near a 50 score = "we can't tell", not "calm neutral".
+function renderConfidence(s) {
+  const el = document.getElementById('score-confidence');
+  if (!el) return;
+  const c = s.confidence;
+  if (c == null) { el.style.display = 'none'; return; }
+  const pct = c.toFixed(2);
+  const low = c < 0.8;
+  const missing = (s.confidence_missing || []).map(k => FACTOR_LABELS[k] || k);
+  const tip = missing.length
+    ? '缺数据因子(以中性 50 填充): ' + missing.join('、')
+    : '全部因子均有真实数据';
+  el.className = 'score-confidence' + (low ? ' low' : '');
+  el.title = tip;
+  el.innerHTML = `置信度 <b>${pct}</b>` + (low ? ' <span class="conf-warn">⚠ 缺数据</span>' : '');
+  el.style.display = '';
 }
 
 function renderFactorTable(res) {
