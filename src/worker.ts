@@ -8,6 +8,7 @@ import { COVERAGE_FACTORS, INGEST_STALE_HOURS, SERIES, CA_QT_END_DATE } from './
 import { assessHealth } from './health';
 import { runRobustness } from './robustness';
 import { runBacktest } from './backtest';
+import { runWalkForward } from './walkforward';
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
@@ -204,6 +205,26 @@ export default {
             vix: r.vix_eod as number | null ?? undefined,
           }));
         return json(runBacktest(snaps));
+      }
+
+      if (p === '/api/walkforward') {
+        // Out-of-sample IC: re-fit IC weights on each training window, score the next
+        // test window, compare wf-fitted vs the live WEIGHTS vs equal-weight. The honest
+        // gate for any weight change — in-sample IC always looks better than it holds up.
+        const rows = await loadBacktestRows(env.DB);   // weekly-only canonical snapshots
+        const snaps = rows
+          .filter((r: any) => r.tsx != null && r.score != null && r.factors_json)
+          .map((r: any) => ({
+            date: r.date as string,
+            score: r.score as number,
+            spx: r.tsx as number,          // TSX fills the spx role
+            factors: JSON.parse(r.factors_json),
+            regime: r.qe_qt_regime as string | undefined,
+            vix: r.vix_eod as number | null ?? undefined,
+          }));
+        const hp = Number(url.searchParams.get('horizon'));
+        const opts = Number.isFinite(hp) && hp > 0 ? { horizonWeeks: Math.round(hp) } : undefined;
+        return json(runWalkForward(snaps, opts));
       }
 
       if (p === '/api/admin/refresh' && req.method === 'POST') {
